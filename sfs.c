@@ -12,6 +12,12 @@ typedef struct
 	int size;
 }Attr;
 
+typedef struct 
+{
+	int content;
+	int next;
+}FreeBlockEntry;
+
 typedef struct
 {
     char name[20];
@@ -28,6 +34,7 @@ typedef struct
 
 DirectoryEntry *directoryTable;
 DescriptorEntry *DescriptorTable;
+FreeBlockEntry *FreeBlockTable;
 int file_no;
 int last_id_index;
 
