@@ -60,6 +60,9 @@ char *rand_name()
     int
 main(int argc, char **argv)
 {
+    printf("0");
+    fflush(stdout);
+
     int i, j, k;
     int chunksize;
     char *buffer;
@@ -74,34 +77,54 @@ main(int argc, char **argv)
 
     mksfs(1);                     /* Initialize the file system. */
 
-//    /* First we open two files and attempt to write data to them.
-//    */
-//    for (i = 0; i < 2; i++) {
-//        names[i] = rand_name();
-//        fds[i] = sfs_fopen(names[i]);
-//        if (fds[i] < 0) {
-//            fprintf(stderr, "ERROR: creating first test file %s\n", names[i]);
-//            error_count++;
-//        }
-//        tmp = sfs_fopen(names[i]);
-//        if (tmp >= 0 && tmp != fds[i]) {
-//            fprintf(stderr, "ERROR: file %s was opened twice\n", names[i]);
-//            error_count++;
-//        }
-//        filesize[i] = (rand() % (MAX_BYTES-MIN_BYTES)) + MIN_BYTES;
-//    }
-//
-//    for (i = 0; i < 2; i++) {
-//        for (j = i + 1; j < 2; j++) {
-//            if (fds[i] == fds[j]) {
-//                fprintf(stderr, "Warning: the file descriptors probably shouldn't be the same?\n");
-//            }
-//        }
-//    }
-//
-//    printf("Two files created with zero length:\n");
-//    sfs_ls();
-//    printf("\n");
+    printf("1");
+    //rand_name();
+    fflush(stdout);
+   /* First we open two files and attempt to write data to them.
+   */
+   for (i = 0; i < 2; i++) {
+        printf("i is %d\n",i);
+       fflush(stdout);
+
+       names[i] = "abcd\0";//rand_name();
+       //printf("i is %d\n",i);
+       fflush(stdout);
+       fds[i] = sfs_fopen(names[i]);
+       printf("fds is %d\n",fds[i]);
+       fflush(stdout);
+       if (fds[i] < 0) {
+           fprintf(stderr, "ERROR: creating first test file %s\n", names[i]);
+           error_count++;
+       }
+       tmp = sfs_fopen(names[i]);
+       if (tmp >= 0 && tmp != fds[i]) {
+           fprintf(stderr, "ERROR: file %s was opened twice\n", names[i]);
+           error_count++;
+       }
+       filesize[i] = (rand() % (MAX_BYTES-MIN_BYTES)) + MIN_BYTES;
+   }
+
+   printf("2");
+   fflush(stdout);
+
+
+   for (i = 0; i < 2; i++) {
+       for (j = i + 1; j < 2; j++) {
+           if (fds[i] == fds[j]) {
+               fprintf(stderr, "Warning: the file descriptors probably shouldn't be the same?\n");
+           }
+       }
+   }
+   printf("2.5");
+   fflush(stdout);
+   printf("Two files created with zero length:\n");
+    printf("2.6");
+   fflush(stdout);
+   sfs_ls();
+   printf("\n");
+
+   printf("3");
+   fflush(stdout);
 //
 //    for (i = 0; i < 2; i++) {
 //        for (j = 0; j < filesize[i]; j += chunksize) {

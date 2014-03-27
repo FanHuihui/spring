@@ -31,8 +31,15 @@ typedef struct
 	int read_ptr;
 } DescriptorEntry; 
 
+typedef struct 
+{
+	int DB_index;
+	int next;
+}FATEntry;
+
 DirectoryEntry *directoryTable;
 DescriptorEntry *descriptorTable;
+FATEntry *FATTable;
 
 int *freeBlockTable;
 int file_no;
@@ -41,16 +48,20 @@ int last_id_index;
 int last_free_block_index;
 int free_block_size;
 
+
+int getLastFreeBlockIndex();
+int sfs_fcreate(char *name);
+
 void init(){
 	file_no = 0;	//0 file at first
 	last_id_index = 0;	//id index
-	free_block_root_index = 0;
 
 	free_block_size = BLOCK_NO - ROOT_DIRECOTRY_NO - SUPER_BLOCK_NO - FAT_BLOCK_NO;
 	freeBlockTable = (int *)malloc(free_block_size * sizeof(int)); 
 	
 	directoryTable = NULL;
 	descriptorTable = NULL;
+	FATTable = NULL;
 }
 
 int mksfs(int fresh){
@@ -70,9 +81,9 @@ void sfs_ls(){
 	int i;
 	for(i=0;i<file_no;i++){
 		DirectoryEntry entry = directoryTable[i];
-		printf("- File name is %20s -", entry.name);
-		printf("- Size is %10d -", entry.attr.size);
-		printf("- FAT index is %10d", entry.FAT_index);
+		printf("- File name is %s -\n", entry.name);
+		printf("- Size is %d -\n", entry.attr.size);
+		printf("- FAT index is %d\n", entry.FAT_index);
 		printf("\n");
 	}
 }
@@ -82,7 +93,10 @@ int sfs_fopen(char *name){
 
 	for(i = 0;i<file_no;i++){
 		DirectoryEntry entry = directoryTable[i];
+		printf("entry name: %s\n", entry.name);
+
 		if(strcmp(entry.name,name) == 0){
+			printf("Same name found\n");
 			int FAT_index = entry.FAT_index;
 			for(j = 0;j < file_no; j++){
 				DescriptorEntry descriptor = descriptorTable[j];
@@ -94,6 +108,7 @@ int sfs_fopen(char *name){
 	}
 
 	//if no such file
+	printf("%s not exist\n",name);
 	int returnIdex = last_id_index;
 	
 	if(!sfs_fcreate(name)){	//not create successfully
@@ -104,24 +119,37 @@ int sfs_fopen(char *name){
 }
 
 int sfs_fcreate(char *name){
+	//printf("going to create!");
+
 	int free_block_index;
 	if( (free_block_index = getLastFreeBlockIndex()) < 0){	//no space to create new file
 		return 0;
 	}
 	//first, write into buffer
+
+	//0. add fat node in fat table
+		//0a. create a FAT NODE
+	FATEntry fat_entry;
+	fat_entry.DB_index = free_block_index;
+	fat_entry.next = -1;
+	
+	int top_fat_index = sizeof(FATTable)/sizeof(FATEntry);
+	FATTable = realloc(FATTable,sizeof(FATEntry));
+	FATTable[top_fat_index] = fat_entry;
+
 	//1. change file directory table
 		//1a find free block
 		//1b add new entry
 	DirectoryEntry new_fentry;
 
-	strncpy(new_fentry.name,name,sizeof(name));
-	new_fentry.FAT_index = free_block_index;
-	new_fentry.attr.id = last_id_index;
+	strncpy(new_fentry.name,name,strlen(name)+1); //plus 1 to include \0
+	new_fentry.FAT_index = fat_entry.DB_index;
+	new_fentry.attr.ID = last_id_index;
 	new_fentry.attr.size = 0;
 
-	int no_directory_entry = sizeof(directoryTable)/sizeof(DirectoryEntry);
+	int top_directory_index = sizeof(directoryTable)/sizeof(DirectoryEntry);
 	directoryTable = realloc(directoryTable,sizeof(DirectoryEntry));
-	directoryTable[no_directory_entry] = new_fentry;
+	directoryTable[top_directory_index] = new_fentry;
 
 	last_id_index++;
 
@@ -135,13 +163,17 @@ int sfs_fcreate(char *name){
 	new_dentry.wirte_ptr = 0;
 	new_dentry.read_ptr = 0;
 	
-	int no_descriptor_entry = sizeof(descriptorTable)/sizeof(DescriptorEntry);
+	int top_descriptor_index = sizeof(descriptorTable)/sizeof(DescriptorEntry);
 	descriptorTable = realloc(descriptorTable,sizeof(DescriptorEntry));
-	descriptorTable[no_descriptor_entry] = new_dentry;
+	descriptorTable[top_descriptor_index] = new_dentry;
 
-	//then push free block and directory table to harddisk
+	//then push free block and directory table to harddisk & fat table
 	write_blocks(BLOCK_NO-1, FREE_BLOCK_NO, freeBlockTable);
 	write_blocks(SUPER_BLOCK_NO, ROOT_DIRECOTRY_NO, directoryTable);
+	write_blocks(SUPER_BLOCK_NO+ROOT_DIRECOTRY_NO, FAT_BLOCK_NO, FATTable);
+
+	//increase file no
+	file_no++;
 
 	return 1;
 }
