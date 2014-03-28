@@ -183,7 +183,7 @@ int sfs_fcreate(char *name){
 	new_fentry.attr.ID = last_id_index;
 	new_fentry.attr.size = 0;
 
-	int top_directory_index = sizeof(directoryTable)/sizeof(DirectoryEntry);
+	int top_directory_index = directory_no;
 	directoryTable = realloc(directoryTable,sizeof(DirectoryEntry));
 	directoryTable[top_directory_index] = new_fentry;
 
@@ -199,7 +199,7 @@ int sfs_fcreate(char *name){
 	new_dentry.wirte_ptr = 0;
 	new_dentry.read_ptr = 0;
 	
-	int top_descriptor_index = sizeof(descriptorTable)/sizeof(DescriptorEntry);
+	int top_descriptor_index = open_directory_no;
 	descriptorTable = realloc(descriptorTable,sizeof(DescriptorEntry));
 	descriptorTable[top_descriptor_index] = new_dentry;
 
