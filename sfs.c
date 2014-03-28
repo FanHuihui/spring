@@ -29,6 +29,7 @@ typedef struct
 	int root_FAT;
 	int wirte_ptr;
 	int read_ptr;
+	char *content;
 } DescriptorEntry; 
 
 typedef struct 
@@ -36,6 +37,7 @@ typedef struct
 	int DB_index;
 	int next;
 }FATEntry;
+
 
 DirectoryEntry *directoryTable;
 DescriptorEntry *descriptorTable;
@@ -81,7 +83,7 @@ void sfs_ls(){
 	int i;
 	for(i=0;i<file_no;i++){
 		DirectoryEntry entry = directoryTable[i];
-		printf("- File name is %s -\n", entry.name);
+		printf("\n- File name is %s -\n", entry.name);
 		printf("- Size is %d -\n", entry.attr.size);
 		printf("- FAT index is %d\n", entry.FAT_index);
 		printf("\n");
@@ -95,10 +97,14 @@ int sfs_fopen(char *name){
 		DirectoryEntry entry = directoryTable[i];
 		printf("entry name: %s\n", entry.name);
 
+		int noFileDescriptor = sizeof(descriptorTable)/sizeof(DescriptorEntry);
+		printf("no file descroptor is %d\n",noFileDescriptor);
+
+
 		if(strcmp(entry.name,name) == 0){
 			printf("Same name found\n");
 			int FAT_index = entry.FAT_index;
-			for(j = 0;j < file_no; j++){
+			for(j = 0;j < noFileDescriptor; j++){
 				DescriptorEntry descriptor = descriptorTable[j];
 				if(descriptor.root_FAT == FAT_index ){
 					return j;
@@ -116,6 +122,38 @@ int sfs_fopen(char *name){
 	};
 
 	return returnIdex;
+}
+
+int sfs_fwrite(int fileID, char *buf, int length){
+	//go through file directory to search file by fileID
+
+	//get the write pointer
+
+	//start write to block
+		//if not enough space then find enough block first
+
+	//update fat and free block
+
+	//start to write to disk
+
+
+	return 1;
+}
+
+int sfs_fread(int fileID, char *buf, int length){
+	//go through file directory to search file by fileID
+
+	//get the write pointer
+
+	//start write to block
+		//if not enough space then find enough block first
+
+	//update fat and free block
+
+	//start to write to disk
+
+
+	return 1;
 }
 
 int sfs_fcreate(char *name){
@@ -167,14 +205,23 @@ int sfs_fcreate(char *name){
 	descriptorTable = realloc(descriptorTable,sizeof(DescriptorEntry));
 	descriptorTable[top_descriptor_index] = new_dentry;
 
-	//then push free block and directory table to harddisk & fat table
-	write_blocks(BLOCK_NO-1, FREE_BLOCK_NO, freeBlockTable);
-	write_blocks(SUPER_BLOCK_NO, ROOT_DIRECOTRY_NO, directoryTable);
-	write_blocks(SUPER_BLOCK_NO+ROOT_DIRECOTRY_NO, FAT_BLOCK_NO, FATTable);
+	// then push free block and directory table to harddisk & fat table
+	// write_blocks(BLOCK_NO-1, FREE_BLOCK_NO, freeBlockTable);
+	// write_blocks(SUPER_BLOCK_NO, ROOT_DIRECOTRY_NO, directoryTable);
+	// write_blocks(SUPER_BLOCK_NO+ROOT_DIRECOTRY_NO, FAT_BLOCK_NO, FATTable);
 
 	//increase file no
 	file_no++;
 
+	return 1;
+}
+
+int sfs_fclose(int fileID){
+	//flush memory to harddisk
+	write_blocks(BLOCK_NO-1, FREE_BLOCK_NO, freeBlockTable);
+	write_blocks(SUPER_BLOCK_NO, ROOT_DIRECOTRY_NO, directoryTable);
+	write_blocks(SUPER_BLOCK_NO+ROOT_DIRECOTRY_NO, FAT_BLOCK_NO, FATTable);
+	
 	return 1;
 }
 
