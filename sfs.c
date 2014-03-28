@@ -27,9 +27,10 @@ typedef struct
 typedef struct
 {
 	int root_FAT;
-	int wirte_ptr;
+	int write_ptr;
 	int read_ptr;
 	char *content;
+	int fileID;
 } DescriptorEntry; 
 
 typedef struct 
@@ -123,33 +124,46 @@ int sfs_fopen(char *name){
 }
 
 int sfs_fwrite(int fileID, char *buf, int length){
-	//go through file directory to search file by fileID
+	int i,j;
+	
+	for(i = 0;i < open_directory_no; i++){
+		DescriptorEntry entry = descriptorTable[i];
+		if(entry.fileID == fileID){
+			entry.content = realloc(entry.content,length+1);
 
-	//get the write pointer
+			int isOverride = 0;
+			for(j = 0; j < length; j++){
+				if(entry.content[entry.content.write_ptr] == "\0"){
+					isOverride = 1;
+				} 
+				entry.content[entry.content.write_ptr] = buf[j];
+				entry.content.write_ptr++;
+			}
 
-	//start write to block
-		//if not enough space then find enough block first
-
-	//update fat and free block
-
-	//start to write to disk
-
+			if(isOverride){
+				entry.content[entry.content.write_ptr] = "\0";
+			}
+		}
+	}
 
 	return 1;
 }
 
 int sfs_fread(int fileID, char *buf, int length){
-	//go through file directory to search file by fileID
+	int i,j;
 
-	//get the write pointer
-
-	//start write to block
-		//if not enough space then find enough block first
-
-	//update fat and free block
-
-	//start to write to disk
-
+	for(i = 0; i < open_directory_no; i++){
+		DescriptorEntry entry = descriptorTable[i];
+		if(entry.fileID == fileID){
+			for(j = 0; j < length; j++){
+				buff[j] = entry.content[entry.read_ptr];
+				if(buff[j] == "\0"){
+					break;
+				}
+				entry.read_ptr++;
+			}
+		}
+	}
 
 	return 1;
 }
@@ -196,9 +210,12 @@ int sfs_fcreate(char *name){
 	//3. change descriptor table
 	DescriptorEntry new_dentry;
 	new_dentry.root_FAT = new_fentry.FAT_index;
-	new_dentry.wirte_ptr = 0;
+	new_dentry.write_ptr = 0;
 	new_dentry.read_ptr = 0;
-	
+	new_dentry.fileID = new_fentry.attr.ID;
+	char *str = (char *)malloc(sizeof(char));
+	str[0] = "\0";
+	new_dentry.content = str;					//content
 	int top_descriptor_index = open_directory_no;
 	descriptorTable = realloc(descriptorTable,sizeof(DescriptorEntry));
 	descriptorTable[top_descriptor_index] = new_dentry;
