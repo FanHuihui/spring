@@ -44,7 +44,8 @@ DescriptorEntry *descriptorTable;
 FATEntry *FATTable;
 
 int *freeBlockTable;
-int file_no;
+int directory_no;
+int open_directory_no;
 int last_id_index;
 
 int last_free_block_index;
@@ -55,8 +56,9 @@ int getLastFreeBlockIndex();
 int sfs_fcreate(char *name);
 
 void init(){
-	file_no = 0;	//0 file at first
+	directory_no = 0;	//0 file at first
 	last_id_index = 0;	//id index
+	open_directory_no = 0;	
 
 	free_block_size = BLOCK_NO - ROOT_DIRECOTRY_NO - SUPER_BLOCK_NO - FAT_BLOCK_NO;
 	freeBlockTable = (int *)malloc(free_block_size * sizeof(int)); 
@@ -81,7 +83,7 @@ int mksfs(int fresh){
 
 void sfs_ls(){
 	int i;
-	for(i=0;i<file_no;i++){
+	for(i=0;i<directory_no;i++){
 		DirectoryEntry entry = directoryTable[i];
 		printf("\n- File name is %s -\n", entry.name);
 		printf("- Size is %d -\n", entry.attr.size);
@@ -93,18 +95,14 @@ void sfs_ls(){
 int sfs_fopen(char *name){
 	int i,j;
 
-	for(i = 0;i<file_no;i++){
+	for(i = 0;i<directory_no;i++){
 		DirectoryEntry entry = directoryTable[i];
 		printf("entry name: %s\n", entry.name);
-
-		int noFileDescriptor = sizeof(descriptorTable)/sizeof(DescriptorEntry);
-		printf("no file descroptor is %d\n",noFileDescriptor);
-
 
 		if(strcmp(entry.name,name) == 0){
 			printf("Same name found\n");
 			int FAT_index = entry.FAT_index;
-			for(j = 0;j < noFileDescriptor; j++){
+			for(j = 0;j < open_directory_no; j++){
 				DescriptorEntry descriptor = descriptorTable[j];
 				if(descriptor.root_FAT == FAT_index ){
 					return j;
@@ -211,7 +209,8 @@ int sfs_fcreate(char *name){
 	// write_blocks(SUPER_BLOCK_NO+ROOT_DIRECOTRY_NO, FAT_BLOCK_NO, FATTable);
 
 	//increase file no
-	file_no++;
+	directory_no++;
+	open_directory_no++;
 
 	return 1;
 }
@@ -221,6 +220,8 @@ int sfs_fclose(int fileID){
 	write_blocks(BLOCK_NO-1, FREE_BLOCK_NO, freeBlockTable);
 	write_blocks(SUPER_BLOCK_NO, ROOT_DIRECOTRY_NO, directoryTable);
 	write_blocks(SUPER_BLOCK_NO+ROOT_DIRECOTRY_NO, FAT_BLOCK_NO, FATTable);
+
+	open_directory_no--;
 	
 	return 1;
 }
