@@ -133,15 +133,15 @@ int sfs_fwrite(int fileID, char *buf, int length){
 
 			int isOverride = 0;
 			for(j = 0; j < length; j++){
-				if(entry.content[entry.content.write_ptr] == "\0"){
+				if(entry.content[entry.write_ptr] == '\0'){
 					isOverride = 1;
 				} 
-				entry.content[entry.content.write_ptr] = buf[j];
-				entry.content.write_ptr++;
+				entry.content[entry.write_ptr] = buf[j];
+				entry.write_ptr++;
 			}
 
 			if(isOverride){
-				entry.content[entry.content.write_ptr] = "\0";
+				entry.content[entry.write_ptr] = '\0';
 			}
 		}
 	}
@@ -156,8 +156,8 @@ int sfs_fread(int fileID, char *buf, int length){
 		DescriptorEntry entry = descriptorTable[i];
 		if(entry.fileID == fileID){
 			for(j = 0; j < length; j++){
-				buff[j] = entry.content[entry.read_ptr];
-				if(buff[j] == "\0"){
+				buf[j] = entry.content[entry.read_ptr];
+				if(buf[j] == '\0'){
 					break;
 				}
 				entry.read_ptr++;
@@ -214,7 +214,7 @@ int sfs_fcreate(char *name){
 	new_dentry.read_ptr = 0;
 	new_dentry.fileID = new_fentry.attr.ID;
 	char *str = (char *)malloc(sizeof(char));
-	str[0] = "\0";
+	str[0] = '\0';
 	new_dentry.content = str;					//content
 	int top_descriptor_index = open_directory_no;
 	descriptorTable = realloc(descriptorTable,sizeof(DescriptorEntry));
@@ -243,6 +243,36 @@ int sfs_fclose(int fileID){
 	return 1;
 }
 
+int sfs_remove(char *file){
+
+	//remove the file from the directory entry 
+	int i,j;
+	for(i = 0;i<directory_no;i++){
+		DirectoryEntry entry = directoryTable[i];
+		printf("entry name: %s\n", entry.name);
+
+		if(strcmp(entry.name,file) == 0){
+			printf("Same name found\n");
+			// To release the file allocation table entries, but dont know how to link to free slot
+			FATEntry *current= &FATTable[entry.FAT_index];
+			FATEntry *previous= NULL;
+			for(j=0;current->next!= -1;j++){
+				current->DB_index=1; // need to change later, not sure what it is 
+				previous=current;
+				current=&FATTable[current->next];
+				previous->next=-1;
+			}		
+
+
+			//release the current directory entry
+			//directoryTable[i]={0};    //not sure whether it is correct...how to reset everything to its origin
+			break;
+		}
+	}	
+		//remove data blocks
+	return 1;
+
+}
 int getLastFreeBlockIndex(){
 	int i;
 	for(i=0;i<free_block_size;i++){
