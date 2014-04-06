@@ -180,7 +180,7 @@ int sfs_fcreate(char *name){
 	//0. add fat node in fat table
 		//0a. create a FAT NODE
 	FATEntry fat_entry;
-	fat_entry.DB_index = free_block_index;
+	fat_entry.DB_index = -1;		//no block is allocated at first
 	fat_entry.next = -1;
 	
 	int top_fat_index = sizeof(FATTable)/sizeof(FATEntry);
@@ -203,9 +203,9 @@ int sfs_fcreate(char *name){
 
 	last_id_index++;
 
-	//2. change free table
-	freeBlockTable[free_block_index] = 1;
-	last_free_block_index = free_block_index;
+	// //2. change free table
+	// freeBlockTable[free_block_index] = 1;
+	// last_free_block_index = free_block_index;
 	
 	//3. change descriptor table
 	DescriptorEntry new_dentry;
@@ -228,6 +228,10 @@ int sfs_fcreate(char *name){
 	//increase file no
 	directory_no++;
 	open_directory_no++;
+
+	//write info to hard disk
+	write_blocks(SUPER_BLOCK_NO, ROOT_DIRECOTRY_NO, directoryTable);
+	write_blocks(SUPER_BLOCK_NO+ROOT_DIRECOTRY_NO, FAT_BLOCK_NO, FATTable);
 
 	return 1;
 }
