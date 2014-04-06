@@ -54,6 +54,8 @@ int free_block_size;
 
 int getLastFreeBlockIndex();
 int sfs_fcreate(char *name);
+int getWritePointer(int fileID);
+int getRootFatIndex(int fileID);
 
 void init(){
 	directory_no = 0;	//0 file at first
@@ -77,7 +79,7 @@ int mksfs(int fresh){
 		init_disk("v_disk.txt",BLOCK_SIZE ,BLOCK_NO);
 	}
     
-    return 0;
+    return 1;
 }
 
 
@@ -116,7 +118,7 @@ int sfs_fopen(char *name){
 	int returnIdex = last_id_index;
 	
 	if(!sfs_fcreate(name)){	//not create successfully
-		return -1;
+		return 0;
 	};
 
 	return returnIdex;
@@ -125,9 +127,74 @@ int sfs_fopen(char *name){
 int sfs_fwrite(int fileID, char *buf, int length){
 	int i,j;
 	
+	//find the write pointer
+	int w_pointer;
+	if(w_pointer = getWritePointer(fileID){
+		if(w_pointer%BLOCK_SIZE != 0){//need to append bytes to last block
+			int nth_block = w_pointer/BLOCK_SIZE;
+			int nextIndex = getRootFatIndex(fileID);
+
+			for(i=0;i<nth_block;i++){
+				nextIndex = directoryTable[nextIndex].next;
+			}
+			
+			int DB_index = directoryTable[nextIndex].DB_index;
+			char *buffer = (char *)malloc(BLOCK_SIZE);
+			read_blocks(0, DB_index, buffer);
+
+			int left_bytes = BLOCK_SIZE - w_pointer%BLOCK_SIZE;
+			if(left_bytes >= length){ //no need to write to a new block
+				for(j = 0;j < length; j++){
+					buffer[w_pointer%BLOCK_SIZE] = buf[j];
+					w_pointer++;
+				}
+
+				//write to hard-disk
+				write_blocks(0, DB_index, buffer);
+			}else{
+				for(j=0;j<left_bytes;j++){//write all bytes into current block
+					buffer[w_pointer%BLOCK_SIZE] = buf[j];
+					w_pointer++;
+				}
+
+				
+			}
+		}else{
+
+		}
+	}else{
+		return 0;
+	};
 	
 
 	return 1;
+}
+
+int getRootFatIndex(int fileID){
+	int i;
+	for(i=0;i<directory_no;i++){
+		DirectoryEntry entry = directoryTable[i];
+		if(entry.ID == fileID){
+			return entry.FAT_index;
+		}
+	}
+
+	return -1;
+}
+
+int getWritePointer(int fileID){
+	int i;
+
+	for(i=0;i<open_directory_no;i++){
+		DescriptorEntry *entry = descriptorTable[i];
+		if(entry.fileID == fileID){
+			return entry.write_ptr;
+		}
+
+	}
+
+	printf("cannot find write pointer\n");
+	return 0;
 }
 
 int sfs_fread(int fileID, char *buf, int length){
