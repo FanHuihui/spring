@@ -3,6 +3,7 @@
 #include "disk_emu.h"
 #include "sfs_api.h"
 #include <string.h>
+#include <math.h>
 
 #define BLOCK_SIZE 10
 #define BLOCK_NO 100
@@ -56,6 +57,7 @@ int getLastFreeBlockIndex();
 int sfs_fcreate(char *name);
 int getWritePointer(int fileID);
 int getRootFatIndex(int fileID);
+int writeDataToDisk(int fileID,char *buf, int length);
 
 void init(){
 	directory_no = 0;	//0 file at first
@@ -64,7 +66,10 @@ void init(){
 
 	free_block_size = BLOCK_NO - ROOT_DIRECOTRY_NO - SUPER_BLOCK_NO - FAT_BLOCK_NO;
 	freeBlockTable = (int *)malloc(free_block_size * sizeof(int)); 
-	
+	//first several block should be non-empty
+	//????
+	//????
+
 	directoryTable = NULL;
 	descriptorTable = NULL;
 	FATTable = NULL;
@@ -156,16 +161,50 @@ int sfs_fwrite(int fileID, char *buf, int length){
 					buffer[w_pointer%BLOCK_SIZE] = buf[j];
 					w_pointer++;
 				}
+				write_blocks(0, DB_index, buffer);//write block to disk
 
-				
+				char *newBuf = (char *)malloc(length - left_bytes);
+				// for(j=0;j<length - left_bytes;j++){
+				// 	newBuf[j] = buf[j+left_bytes];
+				// }
+				memcpy(newBuf, &buf[left_bytes], (length - left_bytes) * sizeof(char)); 
+
+				writeDataToDisk(fileID,newBuf,length - left_bytes);
 			}
 		}else{
-
+			writeDataToDisk(fileID,buf,length);
 		}
 	}else{
 		return 0;
 	};
 	
+	return 1;
+}
+
+int writeDataToDisk(int fileID,char *buf, int length){
+	int no_block = ceil((double)length/BLOCK_SIZE);
+
+	int *array = (int *)malloc(sizeof(int) * no_block);
+
+	int i,j;
+
+	//get space first 
+	for(i=0;i<no_block;i++){
+		array[i] = getLastFreeBlockIndex();
+		if(array[i] == -1){
+			for(j=0;j<i;j++){
+				freeBlockTable[array[j]] = 0;
+			}
+
+			printf("fail to allocate db block, no space\n");
+			return 0;
+		}
+
+		freeBlockTable[array[i]] = 1;
+	}
+
+	//map content to space
+	int top_fat_index = sizeof(FATTable)/sizeof(FATEntry);
 
 	return 1;
 }
