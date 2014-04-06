@@ -29,7 +29,6 @@ typedef struct
 	int root_FAT;
 	int write_ptr;
 	int read_ptr;
-	char *content;
 	int fileID;
 } DescriptorEntry; 
 
@@ -126,25 +125,7 @@ int sfs_fopen(char *name){
 int sfs_fwrite(int fileID, char *buf, int length){
 	int i,j;
 	
-	for(i = 0;i < open_directory_no; i++){
-		DescriptorEntry entry = descriptorTable[i];
-		if(entry.fileID == fileID){
-			entry.content = realloc(entry.content,length+1);
-
-			int isOverride = 0;
-			for(j = 0; j < length; j++){
-				if(entry.content[entry.write_ptr] == '\0'){
-					isOverride = 1;
-				} 
-				entry.content[entry.write_ptr] = buf[j];
-				entry.write_ptr++;
-			}
-
-			if(isOverride){
-				entry.content[entry.write_ptr] = '\0';
-			}
-		}
-	}
+	
 
 	return 1;
 }
@@ -152,18 +133,7 @@ int sfs_fwrite(int fileID, char *buf, int length){
 int sfs_fread(int fileID, char *buf, int length){
 	int i,j;
 
-	for(i = 0; i < open_directory_no; i++){
-		DescriptorEntry entry = descriptorTable[i];
-		if(entry.fileID == fileID){
-			for(j = 0; j < length; j++){
-				buf[j] = entry.content[entry.read_ptr];
-				if(buf[j] == '\0'){
-					break;
-				}
-				entry.read_ptr++;
-			}
-		}
-	}
+	
 
 	return 1;
 }
@@ -213,9 +183,7 @@ int sfs_fcreate(char *name){
 	new_dentry.write_ptr = 0;
 	new_dentry.read_ptr = 0;
 	new_dentry.fileID = new_fentry.attr.ID;
-	char *str = (char *)malloc(sizeof(char));
-	str[0] = '\0';
-	new_dentry.content = str;					//content
+
 	int top_descriptor_index = open_directory_no;
 	descriptorTable = realloc(descriptorTable,sizeof(DescriptorEntry));
 	descriptorTable[top_descriptor_index] = new_dentry;
