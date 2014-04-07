@@ -191,35 +191,128 @@ int writeDataToDisk(int fileID,char *buf, int length){
 	int no_fat_node = sizeof(FATTable)/sizeof(FATEntry);
 	int i,j;
 
-	j=0;
-	for(i = 0; i < no_fat_node; i++){
-		int db_id = FATTable[i].DB_index;
-		if(freeBlockTable[db_id] == 0){
-			if(j < no_block){
-				array[j] = db_id;
-				j++;
+	//find last id first
+	int fat_root_index = getRootFatIndex(fileID);
+	FATEntry *last_entry = &FATTable[fat_root_index];
+
+	while(last_entry->next != -1){
+		last_entry = &FATTable[fat_entry->next];
+	}
+
+	for(i=0;i<no_block;i++){
+		//find a free block in fat table
+		int isFound = 0;
+		int db;
+		int nextIndex;
+		FATEntry *next_entry;
+
+		for(j = 0; j < no_fat_node; j++){
+			int db_id = FATTable[j].DB_index;
+			if(db_id >= 0 && freeBlockTable[db_id] == 0){
+				isFound = 1;
+				int size = (i!=no_block-1)?BLOCK_SIZE:length-i*BLOCK_SIZE;
+				char *newBuf = (char *)malloc(size);
+				memcpy(newBuf,&buf[i*BLOCK_SIZE],size);
+				write_blocks(db_id,1,newBuf);
+				
+				nextIndex = j;
+				next_entry = &FATTable[j];
+				next_entry -> next = -1;
 			}
 		}
-	}
 
-	if(j == no_block){//find enough free block in the fattable
-		int fat_root_index = getRootFatIndex(fileID);
-		int off = 0;
+		if(!isFound){//not found then allocate a new fat node to write in
+			FATEntry f_entry;
+			f_entry.DB_index = getLastFreeBlockIndex();
+			f_entry.next = -1;
+	
+			int top_fat_index = sizeof(FATTable)/sizeof(FATEntry);
+			FATTable = realloc(FATTable,sizeof(FATEntry));
+			FATTable[top_fat_index] = f_entry;
 
-		if(fat_root_index == -1){
-			int fatIndex = fatIndexWithDBIndex(array[0]);
-			changeDirectoryRootFatIndex(fileID,fatIndex);
-			changeOpenFileRootFatIndex(fileID,fatIndex);
-
-			off = -1;
+			int size = (i != no_block-1)?BLOCK_SIZE:length-i*BLOCK_SIZE;
+			char *newBuf = (char *)malloc(size);
+			memcpy(newBuf,&buf[i*BLOCK_SIZE],size);
+			write_blocks(f_entry.DB_index,1,newBuf);
+			
+			nextIndex = top_fat_index;
+			next_entry = &f_entry;
 		}
 
-		for(i = 0; i < off+no_block; i++ ){
-
-		}		
-	}else{
-
+		//if fat entry db index == -1
+		if(last_entry -> DB_index == -1){
+			int db_id = next_entry -> DB_index;
+			last_entry -> DB_index = db_id;
+			changeDirectoryRootFatIndex(fileID,db_id);
+			changeOpenFileRootFatIndex(fileID,db_id);
+		}else{
+			last_entry -> next = nextIndex;
+			last_entry = next_entry;
+		}
 	}
+	// int db;
+	// if(FATTable[fat_root_index].DB_index == -1){//no such file yet
+	// 	//update directory table and descriptor table
+	// 	//find a free block 
+	// 	int index = -1;
+	// 	for(i=0;i < no_fat_node;i++){
+	// 		int db_id = FATTable[i].DB_index;
+	// 		if(db_id >= 0 && freeBlockTable[db_id] == 0){
+	// 			index = i;
+	// 			break;
+	// 		}
+	// 	}
+
+	// 	if(index == -1){	//init a new fat node here
+	// 		index = no_fat_node;
+
+	// 		FATEntry fat_entry;
+	// 		fat_entry.DB_index = getLastFreeBlockIndex();
+	// 		db = fat_entry.DB_index;
+	// 		fat_entry.next = -1;
+	
+	// 		int top_fat_index = sizeof(FATTable)/sizeof(FATEntry);
+	// 		FATTable = realloc(FATTable,sizeof(FATEntry));
+	// 		FATTable[top_fat_index] = fat_entry;
+	// 		no_fat_node++;
+	// 	}
+
+	// 	changeDirectoryRootFatIndex(fileID,index);
+	// 	changeOpenFileRootFatIndex(fileID,index);
+
+	// 	write_blocks(db, 1, );
+	// 	no_block--;
+	// }
+
+	// j=0;
+	// for(i = 0; i < no_fat_node; i++){
+	// 	int db_id = FATTable[i].DB_index;
+	// 	if(freeBlockTable[db_id] == 0){
+	// 		if(j < no_block){
+	// 			array[j] = db_id;
+	// 			j++;
+	// 		}
+	// 	}
+	// }
+
+	// if(j == no_block){//find enough free block in the fattable
+	// 	int fat_root_index = getRootFatIndex(fileID);
+	// 	int off = 0;
+
+	// 	if(fat_root_index == -1){
+	// 		int fatIndex = fatIndexWithDBIndex(array[0]);
+	// 		changeDirectoryRootFatIndex(fileID,fatIndex);
+	// 		changeOpenFileRootFatIndex(fileID,fatIndex);
+
+	// 		off = -1;
+	// 	}
+
+	// 	for(i = 0; i < off+no_block; i++ ){
+
+	// 	}		
+	// }else{
+
+	// }
 
 	return 1;
 }
@@ -237,13 +330,23 @@ int fatIndexWithDBIndex(int db_id){
 }
 
 int changeDirectoryRootFatIndex(int fileID, int rootIndex){
-
+	int i;
+	for(i=0;i<directory_no;i++){
+		if(directoryTable[i].attr.ID == fileID ){
+			directoryTable[i].FAT_index = rootIndex;
+		}
+	}
 
 	return 1;
 }
 
 int changeOpenFileRootFatIndex(int fileID, int rootIndex){
-
+	int i;
+	for(i=0;i<open_directory_no;i++){
+		if(descriptorTable[i].fileID == fileID){
+			descriptorTable[i].root_FAT = rootIndex;
+		}
+	}
 
 	return 1;
 }
@@ -327,7 +430,7 @@ int sfs_fcreate(char *name){
 	DirectoryEntry new_fentry;
 
 	strncpy(new_fentry.name,name,strlen(name)+1); //plus 1 to include \0
-	new_fentry.FAT_index = fat_entry.DB_index;
+	new_fentry.FAT_index = top_fat_index;			//index of fat table
 	new_fentry.attr.ID = last_id_index;
 	new_fentry.attr.size = 0;
 
