@@ -137,7 +137,7 @@ int sfs_fwrite(int fileID, char *buf, int length){
 	
 	//find the write pointer
 	int w_pointer;
-	if(w_pointer = getWritePointer(fileID){
+	if(w_pointer = getWritePointer(fileID)){
 		if(w_pointer%BLOCK_SIZE != 0){//need to append bytes to last block
 			int nth_block = w_pointer/BLOCK_SIZE;
 			int nextIndex = getRootFatIndex(fileID);
@@ -148,7 +148,7 @@ int sfs_fwrite(int fileID, char *buf, int length){
 			
 			int DB_index = directoryTable[nextIndex].DB_index;
 			char *buffer = (char *)malloc(BLOCK_SIZE);
-			read_blocks(0, DB_index, buffer);
+			read_blocks(DB_index,1, buffer);
 
 			int left_bytes = BLOCK_SIZE - w_pointer%BLOCK_SIZE;
 			if(left_bytes >= length){ //no need to write to a new block
@@ -158,13 +158,13 @@ int sfs_fwrite(int fileID, char *buf, int length){
 				}
 
 				//write to hard-disk
-				write_blocks(0, DB_index, buffer);
+				write_blocks(DB_index,1, buffer);
 			}else{
 				for(j=0;j<left_bytes;j++){//write all bytes into current block
 					buffer[w_pointer%BLOCK_SIZE] = buf[j];
 					w_pointer++;
 				}
-				write_blocks(0, DB_index, buffer);//write block to disk
+				write_blocks(DB_index,1, buffer);//write block to disk
 
 				char *newBuf = (char *)malloc(length - left_bytes);
 				// for(j=0;j<length - left_bytes;j++){
@@ -252,7 +252,7 @@ int getRootFatIndex(int fileID){
 	int i;
 	for(i=0;i<directory_no;i++){
 		DirectoryEntry entry = directoryTable[i];
-		if(entry.ID == fileID){
+		if(entry.attr.ID == fileID){
 			return entry.FAT_index;
 		}
 	}
@@ -264,7 +264,7 @@ int getWritePointer(int fileID){
 	int i;
 
 	for(i=0;i<open_directory_no;i++){
-		DescriptorEntry *entry = descriptorTable[i];
+		DescriptorEntry entry = descriptorTable[i];
 		if(entry.fileID == fileID){
 			return entry.write_ptr;
 		}
@@ -383,6 +383,13 @@ int sfs_remove(char *file){
 
 	//remove the file from the directory entry 
 	int i,j;
+	char *buffer = (char *)malloc(BLOCK_SIZE);
+	for (i = 0; i < BLOCK_SIZE; i++)
+	{
+		buffer[i]=48;
+	}
+
+	
 	for(i = 0;i<directory_no;i++){
 		DirectoryEntry entry = directoryTable[i];
 		printf("entry name: %s\n", entry.name);
@@ -393,19 +400,36 @@ int sfs_remove(char *file){
 			FATEntry *current= &FATTable[entry.FAT_index];
 			FATEntry *previous= NULL;
 			for(j=0;current->next!= -1;j++){
-				current->DB_index=1; // need to change later, not sure what it is 
+				freeBlockTable[current->DB_index]=0; // Mark the data block as free
+				write_blocks(current->DB_index,1, buffer);
 				previous=current;
 				current=&FATTable[current->next];
 				previous->next=-1;
 			}		
 
-
 			//release the current directory entry
-			//directoryTable[i]={0};    //not sure whether it is correct...how to reset everything to its origin
-			break;
+			for (j = i; j < directory_no-i-1; j++){
+				directoryTable[j]=directoryTable[j+1];	
+			}
+			directory_no--;
+			DirectoryEntry *dirTempraryTable= (DirectoryEntry *)malloc(directory_no * sizeof(DirectoryEntry));
+			memcpy(dirTempraryTable, &directoryTable[0], directory_no * sizeof(DirectoryEntry)); 
+			directoryTable=dirTempraryTable;
+
+			//release the descritory entry
+			for (j = i; j <  open_directory_no-i-1; j++){
+				descriptorTable[j]=descriptorTable[j+1];
+			}
+			open_directory_no--;
+			DescriptorEntry *desTempraryTable=(DescriptorEntry *)malloc(open_directory_no * sizeof(DescriptorEntry));
+			memcpy(desTempraryTable, &descriptorTable[0], open_directory_no * sizeof(DescriptorEntry)); 
+			descriptorTable=desTempraryTable;
 		}
+
+		break;
 	}	
-		//remove data blocks
+
+
 	return 1;
 
 }
