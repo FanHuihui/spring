@@ -145,7 +145,7 @@ int sfs_fwrite(int fileID, char *buf, int length){
 			
 			int DB_index = directoryTable[nextIndex].DB_index;
 			char *buffer = (char *)malloc(BLOCK_SIZE);
-			read_blocks(0, DB_index, buffer);
+			read_blocks(DB_index,1, buffer);
 
 			int left_bytes = BLOCK_SIZE - w_pointer%BLOCK_SIZE;
 			if(left_bytes >= length){ //no need to write to a new block
@@ -155,13 +155,13 @@ int sfs_fwrite(int fileID, char *buf, int length){
 				}
 
 				//write to hard-disk
-				write_blocks(0, DB_index, buffer);
+				write_blocks(DB_index,1, buffer);
 			}else{
 				for(j=0;j<left_bytes;j++){//write all bytes into current block
 					buffer[w_pointer%BLOCK_SIZE] = buf[j];
 					w_pointer++;
 				}
-				write_blocks(0, DB_index, buffer);//write block to disk
+				write_blocks(DB_index,1, buffer);//write block to disk
 
 				char *newBuf = (char *)malloc(length - left_bytes);
 				// for(j=0;j<length - left_bytes;j++){
@@ -327,6 +327,13 @@ int sfs_remove(char *file){
 
 	//remove the file from the directory entry 
 	int i,j;
+	char *buffer = (char *)malloc(BLOCK_SIZE);
+	for (i = 0; i < BLOCK_SIZE; i++)
+	{
+		buffer[i]=48;
+	}
+
+	
 	for(i = 0;i<directory_no;i++){
 		DirectoryEntry entry = directoryTable[i];
 		printf("entry name: %s\n", entry.name);
@@ -337,19 +344,27 @@ int sfs_remove(char *file){
 			FATEntry *current= &FATTable[entry.FAT_index];
 			FATEntry *previous= NULL;
 			for(j=0;current->next!= -1;j++){
-				current->DB_index=1; // need to change later, not sure what it is 
+				freeBlockTable[current->DB_index]=0; // Mark the data block as free
+				write_blocks(current->DB_index,DB_index,1, buffer);
 				previous=current;
 				current=&FATTable[current->next];
 				previous->next=-1;
 			}		
 
-
 			//release the current directory entry
-			//directoryTable[i]={0};    //not sure whether it is correct...how to reset everything to its origin
+			char *tempraryTable= (char *)malloc();
+			for (j = 0; j < open_directory_no-i-1; j++){
+
+			
+			}
+
+			//release the root directory entry
+
 			break;
 		}
 	}	
-		//remove data blocks
+
+
 	return 1;
 
 }
