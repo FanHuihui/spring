@@ -202,9 +202,12 @@ int writeDataToDisk(int fileID,char *buf, int length){
 
 		freeBlockTable[array[i]] = 1;
 	}
-
-	//map content to space
-	int top_fat_index = sizeof(FATTable)/sizeof(FATEntry);
+	
+	//find root fat index first
+	int rootFatIndex = getRootFatIndex(fileID);
+	if(FATTable[rootFatIndex].DB_index == -1){
+		
+	}
 
 	return 1;
 }
@@ -229,7 +232,6 @@ int getWritePointer(int fileID){
 		if(entry.fileID == fileID){
 			return entry.write_ptr;
 		}
-
 	}
 
 	printf("cannot find write pointer\n");
