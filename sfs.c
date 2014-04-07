@@ -58,6 +58,9 @@ int sfs_fcreate(char *name);
 int getWritePointer(int fileID);
 int getRootFatIndex(int fileID);
 int writeDataToDisk(int fileID,char *buf, int length);
+int changeDirectoryRootFatIndex(int fileID, int rootIndex);
+int changeOpenFileRootFatIndex(int fileID, int rootIndex);
+int getReadPointer(int fileID);
 
 void init(){
 	directory_no = 0;	//0 file at first
@@ -185,29 +188,62 @@ int writeDataToDisk(int fileID,char *buf, int length){
 	int no_block = ceil((double)length/BLOCK_SIZE);
 
 	int *array = (int *)malloc(sizeof(int) * no_block);
-
+	int no_fat_node = sizeof(FATTable)/sizeof(FATEntry);
 	int i,j;
 
-	//get space first 
-	for(i=0;i<no_block;i++){
-		array[i] = getLastFreeBlockIndex();
-		if(array[i] == -1){
-			for(j=0;j<i;j++){
-				freeBlockTable[array[j]] = 0;
+	j=0;
+	for(i = 0; i < no_fat_node; i++){
+		int db_id = FATTable[i].DB_index;
+		if(freeBlockTable[db_id] == 0){
+			if(j < no_block){
+				array[j] = db_id;
+				j++;
 			}
+		}
+	}
 
-			printf("fail to allocate db block, no space\n");
-			return 0;
+	if(j == no_block){//find enough free block in the fattable
+		int fat_root_index = getRootFatIndex(fileID);
+		int off = 0;
+
+		if(fat_root_index == -1){
+			int fatIndex = fatIndexWithDBIndex(array[0]);
+			changeDirectoryRootFatIndex(fileID,fatIndex);
+			changeOpenFileRootFatIndex(fileID,fatIndex);
+
+			off = -1;
 		}
 
-		freeBlockTable[array[i]] = 1;
+		for(i = 0; i < off+no_block; i++ ){
+
+		}		
+	}else{
+
 	}
+
+	return 1;
+}
+
+int fatIndexWithDBIndex(int db_id){
+	int ite = sizeof(FATTable)/sizeof(FATEntry);
 	
-	//find root fat index first
-	int rootFatIndex = getRootFatIndex(fileID);
-	if(FATTable[rootFatIndex].DB_index == -1){
-		
+	for(i = 0; i < ite; i++){
+		if(FATTable[i].DB_index == db_id){
+			return i;
+		}
 	}
+
+	return -1;
+}
+
+int changeDirectoryRootFatIndex(int fileID, int rootIndex){
+
+
+	return 1;
+}
+
+int changeOpenFileRootFatIndex(int fileID, int rootIndex){
+
 
 	return 1;
 }
@@ -238,10 +274,30 @@ int getWritePointer(int fileID){
 	return 0;
 }
 
+int getReadPointer(int fileID){
+	int i;
+
+	for(i=0;i<open_directory_no;i++){
+		DescriptorEntry *entry = descriptorTable[i];
+		if(entry.fileID == fileID){
+			return entry.read_ptr;
+		}
+	}
+
+	printf("cannot find read pointer\n");
+	return 0;
+}
+
 int sfs_fread(int fileID, char *buf, int length){
 	int i,j;
 
-	
+	int read_ptr = getReadPointer(fileID);
+	if(read_ptr % BLOCK_SIZE != 0){//need to read first
+		int nth_block = ceil(read_ptr/BLOCK_SIZE);
+
+	}else{
+
+	}
 
 	return 1;
 }
