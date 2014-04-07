@@ -134,7 +134,7 @@ int sfs_fwrite(int fileID, char *buf, int length){
 	
 	//find the write pointer
 	int w_pointer;
-	if(w_pointer = getWritePointer(fileID){
+	if(w_pointer = getWritePointer(fileID)){
 		if(w_pointer%BLOCK_SIZE != 0){//need to append bytes to last block
 			int nth_block = w_pointer/BLOCK_SIZE;
 			int nextIndex = getRootFatIndex(fileID);
@@ -216,7 +216,7 @@ int getRootFatIndex(int fileID){
 	int i;
 	for(i=0;i<directory_no;i++){
 		DirectoryEntry entry = directoryTable[i];
-		if(entry.ID == fileID){
+		if(entry.attr.ID == fileID){
 			return entry.FAT_index;
 		}
 	}
@@ -228,7 +228,7 @@ int getWritePointer(int fileID){
 	int i;
 
 	for(i=0;i<open_directory_no;i++){
-		DescriptorEntry *entry = descriptorTable[i];
+		DescriptorEntry entry = descriptorTable[i];
 		if(entry.fileID == fileID){
 			return entry.write_ptr;
 		}
@@ -345,23 +345,32 @@ int sfs_remove(char *file){
 			FATEntry *previous= NULL;
 			for(j=0;current->next!= -1;j++){
 				freeBlockTable[current->DB_index]=0; // Mark the data block as free
-				write_blocks(current->DB_index,DB_index,1, buffer);
+				write_blocks(current->DB_index,1, buffer);
 				previous=current;
 				current=&FATTable[current->next];
 				previous->next=-1;
 			}		
 
 			//release the current directory entry
-			char *tempraryTable= (char *)malloc();
-			for (j = 0; j < open_directory_no-i-1; j++){
-
-			
+			for (j = i; j < directory_no-i-1; j++){
+				directoryTable[j]=directoryTable[j+1];	
 			}
+			directory_no--;
+			DirectoryEntry *dirTempraryTable= (DirectoryEntry *)malloc(directory_no * sizeof(DirectoryEntry));
+			memcpy(dirTempraryTable, &directoryTable[0], directory_no * sizeof(DirectoryEntry)); 
+			directoryTable=dirTempraryTable;
 
-			//release the root directory entry
-
-			break;
+			//release the descritory entry
+			for (j = i; j <  open_directory_no-i-1; j++){
+				descriptorTable[j]=descriptorTable[j+1];
+			}
+			open_directory_no--;
+			DescriptorEntry *desTempraryTable=(DescriptorEntry *)malloc(open_directory_no * sizeof(DescriptorEntry));
+			memcpy(desTempraryTable, &descriptorTable[0], open_directory_no * sizeof(DescriptorEntry)); 
+			descriptorTable=desTempraryTable;
 		}
+
+		break;
 	}	
 
 
