@@ -132,6 +132,8 @@ int sfs_fopen(char *name){
 	return returnIdex;
 }
 
+
+
 int sfs_fwrite(int fileID, char *buf, int length){
 	int i,j;
 	
@@ -142,7 +144,7 @@ int sfs_fwrite(int fileID, char *buf, int length){
 
 	char *w_buffer = (char *)malloc(no_block_to_write * BLOCK_SIZE); 
 
-	if(offset != 0){
+	if(offset != 0 || w_pointer < getFileSize(fileID)){
 		int db_id = getNthBlockDBIndex(fileID,w_pointer/BLOCK_SIZE);
 		char *r_buf = (char *)malloc(BLOCK_SIZE);
 		read_blocks(db_id,1,r_buf);
@@ -152,311 +154,117 @@ int sfs_fwrite(int fileID, char *buf, int length){
 
 	memcpy(w_buffer+offset,buf,length);
 
-	//deal w the first block if its been write before
-	if(offset!=0){//need to trace the last block, no need to change other tables
-		int db_id = getNthBlockDBIndex(fileID,w_pointer/BLOCK_SIZE);
-		char *tmp_buf = (char *)malloc(BLOCK_SIZE);
-		memcpy(tmp_buf,w_buffer,BLOCK_SIZE);
-
-		write_blocks(db_id,1,tmp_buf);
-		no_block_to_write--;		//decrease one block
-		block_base=1;				//increasse the base
-	}
-	
-	//root = -1? seek trace back?
-
-	//find the write pointer entry first
-	int root = getRootFatIndex(fileID);
-	FATEntry *current_entry = &FATTable[root];
-
-	for(i=0;i<write_ptr/BLOCK_SIZE;i++){
-		current_entry = &FATTable[current_entry->next];
-	}
-
+	int *db_id_array = (int *)malloc(sizeof(int) * no_block_to_write);
 	for(i=0;i<no_block_to_write;i++){
-		if(current_entry->next != -1){//back trace
-			//no need to change other tables
-			int db_id;
-			char *tmp_buf = (char *)malloc(BLOCK_SIZE);
-			memcpy(tmp_buf,buf+(i+block_base)*BLOCK_SIZE,BLOCK_SIZE);
-			if(offset != 0){	//write to next block
-				db_id = current_entry->next;
-			}else{				//write to current block
-				db_id = current_entry->DB_index;
+		db_id_array[i] = -1;
+	}
+
+	int off=0;
+	if(offset != 0 || w_pointer < getFileSize(fileID)){//need to record first block
+		int db_id = getNthBlockDBIndex(fileID,w_pointer/BLOCK_SIZE);
+		db_id_array[0] = db_id;
+		off = 1;
+
+		if(w_pointer < getFileSize(fileID)){//trace back then find the following blocks 
+			printf("found trace back\n");
+			int nth = w_pointer/BLOCK_SIZE+1;
+			
+			while(1){
+				int r = getNthBlockDBIndex(fileID,nth);
+				if(r != -1 && off < no_block_to_write){
+					db_id_array[off] = r;
+					off++;
+				}else{
+					break;
+				}
 			}
-			write_blocks(db_id,1,tmp_buf);
 		}
+
+		if(off < no_block_to_write){//still need to find free block
+			int i;
+			for(i = 0; i < no_block_to_write-off; i++){
+				int f_id = getLastFreeBlockIndex();
+				if(f_id < 0){
+					printf("cannot find free block already\n");
+					break;
+				}
+				freeBlockTable[f_id] = 1;
+				db_id_array[off] = f_id;
+				off++;
+			}
+		}
+	}else{
+		int i;
+			for(i = 0; i < no_block_to_write-off; i++){
+				int f_id = getLastFreeBlockIndex();
+				if(f_id < 0){
+					printf("cannot find free block already\n");
+					break;
+				}
+				freeBlockTable[f_id] = 1;
+				db_id_array[off] = f_id;
+				off++;
+			}
 	}
 
+	//write to hard disk
+	int fail=0;
+	for(i = 0; i < directory_no; i++){
+		if(db_id_array[i] == -1){
+			fail=1;
+			break;
+		}
 
+		char *tmp_buf = (char *)malloc(BLOCK_SIZE);
+		memcpy(tmp_buf, buf+i*BLOCK_SIZE,BLOCK_SIZE);
 
-	// //find the write pointer
-	// int w_pointer;
-	// if(w_pointer = getWritePointer(fileID)){
-	// 	if(w_pointer%BLOCK_SIZE != 0){//need to append bytes to last block
-	// 		int nth_block = w_pointer/BLOCK_SIZE;
-	// 		int nextIndex = getRootFatIndex(fileID);
-
-	// 		for(i=0;i<nth_block;i++){
-	// 			nextIndex = directoryTable[nextIndex].next;
-	// 		}
-			
-	// 		int DB_index = directoryTable[nextIndex].DB_index;
-	// 		char *buffer = (char *)malloc(BLOCK_SIZE);
-	// 		read_blocks(DB_index,1, buffer);
-
-	// 		int left_bytes = BLOCK_SIZE - w_pointer%BLOCK_SIZE;
-	// 		if(left_bytes >= length){ //no need to write to a new block
-	// 			for(j = 0;j < length; j++){
-	// 				buffer[w_pointer%BLOCK_SIZE] = buf[j];
-	// 				w_pointer++;
-	// 			}
-
-	// 			//write to hard-disk
-	// 			write_blocks(DB_index,1, buffer);
-	// 		}else{
-	// 			for(j=0;j<left_bytes;j++){//write all bytes into current block
-	// 				buffer[w_pointer%BLOCK_SIZE] = buf[j];
-	// 				w_pointer++;
-	// 			}
-	// 			write_blocks(DB_index,1, buffer);//write block to disk
-
-	// 			char *newBuf = (char *)malloc(length - left_bytes);
-	// 			// for(j=0;j<length - left_bytes;j++){
-	// 			// 	newBuf[j] = buf[j+left_bytes];
-	// 			// }
-	// 			memcpy(newBuf, &buf[left_bytes], (length - left_bytes) * sizeof(char)); 
-
-	// 			writeDataToDisk(fileID,newBuf,length - left_bytes);
-	// 		}
-	// 	}else{
-	// 		writeDataToDisk(fileID,buf,length);
-	// 	}
-	// }else{
-	// 	return 0;
-	// };
+		write_blocks(db_id_array[i],1,tmp_buf);
+	}
 	
-	// return 1;
-}
-
-// int writeDataToDisk(int fileID,char *buf, int length){
-// 	int no_block = ceil((double)length/BLOCK_SIZE);
-
-// 	int *array = (int *)malloc(sizeof(int) * no_block);
-// 	int no_fat_node = sizeof(FATTable)/sizeof(FATEntry);
-// 	int i,j;
-
-// 	//find last id first
-// 	int fat_root_index = getRootFatIndex(fileID);
-// 	FATEntry *last_entry = &FATTable[fat_root_index];
-
-// 	while(last_entry->next != -1){
-// 		last_entry = &FATTable[fat_entry->next];
-// 	}
-
-// 	for(i=0;i<no_block;i++){
-// 		//find a free block in fat table
-// 		int isFound = 0;
-// 		int db;
-// 		int nextIndex;
-// 		FATEntry *next_entry;
-
-// 		for(j = 0; j < no_fat_node; j++){
-// 			int db_id = FATTable[j].DB_index;
-// 			if(db_id >= 0 && freeBlockTable[db_id] == 0){
-// 				isFound = 1;
-// 				int size = (i!=no_block-1)?BLOCK_SIZE:length-i*BLOCK_SIZE;
-// 				char *newBuf = (char *)malloc(size);
-// 				memcpy(newBuf,&buf[i*BLOCK_SIZE],size);
-// 				write_blocks(db_id,1,newBuf);
-				
-// 				nextIndex = j;
-// 				next_entry = &FATTable[j];
-// 				next_entry -> next = -1;
-// 			}
-// 		}
-
-// 		if(!isFound){//not found then allocate a new fat node to write in
-// 			FATEntry f_entry;
-// 			f_entry.DB_index = getLastFreeBlockIndex();
-// 			f_entry.next = -1;
-	
-// 			int top_fat_index = sizeof(FATTable)/sizeof(FATEntry);
-// 			FATTable = realloc(FATTable,sizeof(FATEntry));
-// 			FATTable[top_fat_index] = f_entry;
-
-// 			int size = (i != no_block-1)?BLOCK_SIZE:length-i*BLOCK_SIZE;
-// 			char *newBuf = (char *)malloc(size);
-// 			memcpy(newBuf,&buf[i*BLOCK_SIZE],size);
-// 			write_blocks(f_entry.DB_index,1,newBuf);
-			
-// 			nextIndex = top_fat_index;
-// 			next_entry = &f_entry;
-// 		}
-
-// 		//if fat entry db index == -1
-// 		if(last_entry -> DB_index == -1){
-// 			int db_id = next_entry -> DB_index;
-// 			last_entry -> DB_index = db_id;
-// 			changeDirectoryRootFatIndex(fileID,db_id);
-// 			changeOpenFileRootFatIndex(fileID,db_id);
-// 		}else{
-// 			last_entry -> next = nextIndex;
-// 			last_entry = next_entry;
-// 		}
-// 	}
-// 	// int db;
-// 	// if(FATTable[fat_root_index].DB_index == -1){//no such file yet
-// 	// 	//update directory table and descriptor table
-// 	// 	//find a free block 
-// 	// 	int index = -1;
-// 	// 	for(i=0;i < no_fat_node;i++){
-// 	// 		int db_id = FATTable[i].DB_index;
-// 	// 		if(db_id >= 0 && freeBlockTable[db_id] == 0){
-// 	// 			index = i;
-// 	// 			break;
-// 	// 		}
-// 	// 	}
-
-// 	// 	if(index == -1){	//init a new fat node here
-// 	// 		index = no_fat_node;
-
-// 	// 		FATEntry fat_entry;
-// 	// 		fat_entry.DB_index = getLastFreeBlockIndex();
-// 	// 		db = fat_entry.DB_index;
-// 	// 		fat_entry.next = -1;
-	
-// 	// 		int top_fat_index = sizeof(FATTable)/sizeof(FATEntry);
-// 	// 		FATTable = realloc(FATTable,sizeof(FATEntry));
-// 	// 		FATTable[top_fat_index] = fat_entry;
-// 	// 		no_fat_node++;
-// 	// 	}
-
-// 	// 	changeDirectoryRootFatIndex(fileID,index);
-// 	// 	changeOpenFileRootFatIndex(fileID,index);
-
-// 	// 	write_blocks(db, 1, );
-// 	// 	no_block--;
-// 	// }
-
-// 	// j=0;
-// 	// for(i = 0; i < no_fat_node; i++){
-// 	// 	int db_id = FATTable[i].DB_index;
-// 	// 	if(freeBlockTable[db_id] == 0){
-// 	// 		if(j < no_block){
-// 	// 			array[j] = db_id;
-// 	// 			j++;
-// 	// 		}
-// 	// 	}
-// 	// }
-
-// 	// if(j == no_block){//find enough free block in the fattable
-// 	// 	int fat_root_index = getRootFatIndex(fileID);
-// 	// 	int off = 0;
-
-// 	// 	if(fat_root_index == -1){
-// 	// 		int fatIndex = fatIndexWithDBIndex(array[0]);
-// 	// 		changeDirectoryRootFatIndex(fileID,fatIndex);
-// 	// 		changeOpenFileRootFatIndex(fileID,fatIndex);
-
-// 	// 		off = -1;
-// 	// 	}
-
-// 	// 	for(i = 0; i < off+no_block; i++ ){
-
-// 	// 	}		
-// 	// }else{
-
-// 	// }
-
-// 	return 1;
-// }
-
-int fatIndexWithDBIndex(int db_id){
-	int ite = sizeof(FATTable)/sizeof(FATEntry);
-	
-	for(i = 0; i < ite; i++){
-		if(FATTable[i].DB_index == db_id){
-			return i;
+	//link fat node
+	//with head
+	int root_id = getRootFatIndex(fileID);
+	FATEntry *f_entry = &FATTable[root_id];
+	if(f_entry -> DB_index != -1){
+		int isOverride=0;
+		while(f_entry -> next != -1){
+			if(f_entry->DB_index == db_id_array[0]){
+				isOverride = 1;
+				break;
+			}
 		}
-	}
 
-	return -1;
-}
+		if(isOverride){
+			for(i = 1; i < no_block_to_write; i++){
+				if( f_entry -> next != -1){
+					f_entry = &FATTable[f_entry->next];
+				}else{//new fat node
+					if(db_id_array[i] == -1) break;
 
-int changeDirectoryRootFatIndex(int fileID, int rootIndex){
-	int i;
-	for(i=0;i<directory_no;i++){
-		if(directoryTable[i].attr.ID == fileID ){
-			directoryTable[i].FAT_index = rootIndex;
+					int fat_index = createNewFatEntry(db_id_array[i],-1);
+					f_entry -> next = fat_index;
+					f_entry = &FATTable[fat_index];
+				}
+			}
+		}else{//append new fat nodes
+			FATEntry *entry = getLastFatEntry(fileID);
+			for(i=0;i<no_block_to_write;i++){
+				if(db_id_array[i] == -1) break;
+
+				int fat_index = createNewFatEntry(db_id_array[i],-1);
+				entry -> next = fat_index;
+				entry = &FATTable[fat_index];
+			}
 		}
+	}else{
+
 	}
 
-	return 1;
-}
-
-int changeOpenFileRootFatIndex(int fileID, int rootIndex){
-	int i;
-	for(i=0;i<open_directory_no;i++){
-		if(descriptorTable[i].fileID == fileID){
-			descriptorTable[i].root_FAT = rootIndex;
-		}
+	if(fail){
+		return -1;
 	}
 
-	return 1;
-}
-
-int getRootFatIndex(int fileID){
-	int i;
-	for(i=0;i<directory_no;i++){
-		DirectoryEntry entry = directoryTable[i];
-		if(entry.attr.ID == fileID){
-			return entry.FAT_index;
-		}
-	}
-
-	return -1;
-}
-
-int getWritePointer(int fileID){
-	int i;
-
-	for(i=0;i<open_directory_no;i++){
-		DescriptorEntry entry = descriptorTable[i];
-		if(entry.fileID == fileID){
-			return entry.write_ptr;
-		}
-	}
-
-	printf("cannot find write pointer\n");
-	return 0;
-}
-
-int getReadPointer(int fileID){
-	int i;
-
-	for(i=0;i<open_directory_no;i++){
-		DescriptorEntry *entry = descriptorTable[i];
-		if(entry.fileID == fileID){
-			return entry.read_ptr;
-		}
-	}
-
-	printf("cannot find read pointer\n");
-	return 0;
-}
-
-int getNthBlockDBIndex(int fileID, int nth_fat_block){
-	int i;
-
-	int root_index = getRootFatIndex(fileID);
-
-	FATEntry entry = FATTable[rootIndex];
-	for( i = 0; i < nth_fat_block; i++){
-		entry = FATTable[entry.next];
-	}
-
-	return entry.DB_index;
+	return length;
 }
 
 int sfs_fread(int fileID, char *buf, int length){
@@ -482,6 +290,88 @@ int sfs_fread(int fileID, char *buf, int length){
 
 	return 1;
 }
+
+
+int sfs_fseek(int fileID, int offset){
+	int i;
+	
+	for(i = 0; i < open_directory_no; i++){
+		DescriptorEntry *entry = &descriptorTable[i];
+
+		if(entry -> fileID == fileID){
+			entry -> read_ptr = offset;
+			entry -> write_ptr = offset;
+		}
+	}
+	
+	return 1;
+}
+int sfs_fclose(int fileID){
+	//flush memory to harddisk
+	write_blocks(BLOCK_NO-1, FREE_BLOCK_NO, freeBlockTable);
+	write_blocks(SUPER_BLOCK_NO, ROOT_DIRECOTRY_NO, directoryTable);
+	write_blocks(SUPER_BLOCK_NO+ROOT_DIRECOTRY_NO, FAT_BLOCK_NO, FATTable);
+
+	open_directory_no--;
+	
+	return 1;
+}
+
+int sfs_remove(char *file){
+
+	//remove the file from the directory entry 
+	int i,j;
+	char *buffer = (char *)malloc(BLOCK_SIZE);
+	for (i = 0; i < BLOCK_SIZE; i++)
+	{
+		buffer[i]=48;
+	}
+
+	
+	for(i = 0;i<directory_no;i++){
+		DirectoryEntry entry = directoryTable[i];
+		printf("entry name: %s\n", entry.name);
+
+		if(strcmp(entry.name,file) == 0){
+			printf("Same name found\n");
+			// To release the file allocation table entries, but dont know how to link to free slot
+			FATEntry *current= &FATTable[entry.FAT_index];
+			FATEntry *previous= NULL;
+			for(j=0;current->next!= -1;j++){
+				freeBlockTable[current->DB_index]=0; // Mark the data block as free
+				write_blocks(current->DB_index,1, buffer);
+				previous=current;
+				current=&FATTable[current->next];
+				previous->next=-1;
+			}		
+
+			//release the current directory entry
+			for (j = i; j < directory_no-i-1; j++){
+				directoryTable[j]=directoryTable[j+1];	
+			}
+			directory_no--;
+			DirectoryEntry *dirTempraryTable= (DirectoryEntry *)malloc(directory_no * sizeof(DirectoryEntry));
+			memcpy(dirTempraryTable, &directoryTable[0], directory_no * sizeof(DirectoryEntry)); 
+			directoryTable=dirTempraryTable;
+
+			//release the descritory entry
+			for (j = i; j <  open_directory_no-i-1; j++){
+				descriptorTable[j]=descriptorTable[j+1];
+			}
+			open_directory_no--;
+			DescriptorEntry *desTempraryTable=(DescriptorEntry *)malloc(open_directory_no * sizeof(DescriptorEntry));
+			memcpy(desTempraryTable, &descriptorTable[0], open_directory_no * sizeof(DescriptorEntry)); 
+			descriptorTable=desTempraryTable;
+		}
+
+		break;
+	}	
+
+
+	return 1;
+
+}
+
 
 int sfs_fcreate(char *name){
 	//printf("going to create!");
@@ -549,71 +439,7 @@ int sfs_fcreate(char *name){
 	return 1;
 }
 
-int sfs_fclose(int fileID){
-	//flush memory to harddisk
-	write_blocks(BLOCK_NO-1, FREE_BLOCK_NO, freeBlockTable);
-	write_blocks(SUPER_BLOCK_NO, ROOT_DIRECOTRY_NO, directoryTable);
-	write_blocks(SUPER_BLOCK_NO+ROOT_DIRECOTRY_NO, FAT_BLOCK_NO, FATTable);
 
-	open_directory_no--;
-	
-	return 1;
-}
-
-int sfs_remove(char *file){
-
-	//remove the file from the directory entry 
-	int i,j;
-	char *buffer = (char *)malloc(BLOCK_SIZE);
-	for (i = 0; i < BLOCK_SIZE; i++)
-	{
-		buffer[i]=48;
-	}
-
-	
-	for(i = 0;i<directory_no;i++){
-		DirectoryEntry entry = directoryTable[i];
-		printf("entry name: %s\n", entry.name);
-
-		if(strcmp(entry.name,file) == 0){
-			printf("Same name found\n");
-			// To release the file allocation table entries, but dont know how to link to free slot
-			FATEntry *current= &FATTable[entry.FAT_index];
-			FATEntry *previous= NULL;
-			for(j=0;current->next!= -1;j++){
-				freeBlockTable[current->DB_index]=0; // Mark the data block as free
-				write_blocks(current->DB_index,1, buffer);
-				previous=current;
-				current=&FATTable[current->next];
-				previous->next=-1;
-			}		
-
-			//release the current directory entry
-			for (j = i; j < directory_no-i-1; j++){
-				directoryTable[j]=directoryTable[j+1];	
-			}
-			directory_no--;
-			DirectoryEntry *dirTempraryTable= (DirectoryEntry *)malloc(directory_no * sizeof(DirectoryEntry));
-			memcpy(dirTempraryTable, &directoryTable[0], directory_no * sizeof(DirectoryEntry)); 
-			directoryTable=dirTempraryTable;
-
-			//release the descritory entry
-			for (j = i; j <  open_directory_no-i-1; j++){
-				descriptorTable[j]=descriptorTable[j+1];
-			}
-			open_directory_no--;
-			DescriptorEntry *desTempraryTable=(DescriptorEntry *)malloc(open_directory_no * sizeof(DescriptorEntry));
-			memcpy(desTempraryTable, &descriptorTable[0], open_directory_no * sizeof(DescriptorEntry)); 
-			descriptorTable=desTempraryTable;
-		}
-
-		break;
-	}	
-
-
-	return 1;
-
-}
 int getLastFreeBlockIndex(){
 	int i;
 	for(i=0;i<free_block_size;i++){
@@ -626,5 +452,155 @@ int getLastFreeBlockIndex(){
 	return -1;
 }
 
+int getFileSize(int fileID){
+	int i;
+	for(i=0;i<directory_no;i++){
+		DirectoryEntry entry = directoryTable[i];
+		if(entry.attr.ID == fileID){
+			return entry.attr.size; 
+		}
+	}
+	return -1;
+}
 
+int getNthBlockFatIndex(int fileID, int nth_block){
+	int root_index = getRootFatIndex(fileID);
+
+	FATEntry entry = FATTable[rootIndex];
+	for( i = 0; i < nth_fat_block; i++){
+		if(entry.next < 0){
+			return -1;
+		}
+		rootIndex = entry.next;
+		entry = FATTable[entry.next];
+	}
+
+	return rootIndex;
+
+}
+
+int getNthBlockDBIndex(int fileID, int nth_fat_block){
+	int i;
+
+	int root_index = getRootFatIndex(fileID);
+
+	FATEntry entry = FATTable[rootIndex];
+	for( i = 0; i < nth_fat_block; i++){
+		if(entry.next < 0){
+			return -1;
+		}
+		entry = FATTable[entry.next];
+	}
+
+	return entry.DB_index;
+}
+
+int getWritePointer(int fileID){
+	int i;
+
+	for(i=0;i<open_directory_no;i++){
+		DescriptorEntry entry = descriptorTable[i];
+		if(entry.fileID == fileID){
+			return entry.write_ptr;
+		}
+	}
+
+	printf("cannot find write pointer\n");
+	return 0;
+}
+
+int getReadPointer(int fileID){
+	int i;
+
+	for(i=0;i<open_directory_no;i++){
+		DescriptorEntry *entry = descriptorTable[i];
+		if(entry.fileID == fileID){
+			return entry.read_ptr;
+		}
+	}
+
+	printf("cannot find read pointer\n");
+	return 0;
+}
+
+int changeDirectoryRootFatIndex(int fileID, int rootIndex){
+	int i;
+	for(i=0;i<directory_no;i++){
+		if(directoryTable[i].attr.ID == fileID ){
+			directoryTable[i].FAT_index = rootIndex;
+		}
+	}
+
+	return 1;
+}
+
+int changeOpenFileRootFatIndex(int fileID, int rootIndex){
+	int i;
+	for(i=0;i<open_directory_no;i++){
+		if(descriptorTable[i].fileID == fileID){
+			descriptorTable[i].root_FAT = rootIndex;
+		}
+	}
+
+	return 1;
+}
+
+int getRootFatIndex(int fileID){
+	int i;
+	for(i=0;i<directory_no;i++){
+		DirectoryEntry entry = directoryTable[i];
+		if(entry.attr.ID == fileID){
+			return entry.FAT_index;
+		}
+	}
+
+	return -1;
+}
+
+int fatIndexWithDBIndex(int db_id){
+	int ite = sizeof(FATTable)/sizeof(FATEntry);
+	
+	for(i = 0; i < ite; i++){
+		if(FATTable[i].DB_index == db_id){
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+FATEntry* getLastFatEntry(int fileID){
+	int root = getRootFatIndex(fileID);
+
+	FATEntry entry = FATTable[root];
+
+	while(entry.next != -1){
+		entry = FATTable[entry.next];
+	}
+
+	return &entry;
+}
+
+int createNewFatEntry(int DB_index,int next){
+	int no_fat = sizeof(FATTable)/sizeof(FATEntry);
+
+	for(int i=0;i<no_fat;i++){
+		FATEntry *entry = &FATTable[i];
+		if(freeBlockTable[entry->DB_index] == 0 ){
+			entry -> DB_index = DB_index;
+			entry -> next = next;
+			return i;
+		} 
+	}
+
+	FATEntry fat_entry;
+	fat_entry.DB_index = DB_index;		//no block is allocated at first
+	fat_entry.next = next;
+	
+	int top_fat_index = sizeof(FATTable)/sizeof(FATEntry);
+	FATTable = realloc(FATTable,sizeof(FATEntry));
+	FATTable[top_fat_index] = fat_entry;
+
+	return top_fat_index;
+}
 
