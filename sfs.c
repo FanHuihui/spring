@@ -56,6 +56,7 @@ FATEntry *FATTable;
 int *freeBlockTable;
 int directory_no;
 int open_directory_no;
+int fat_node_no;
 int last_id_index;
 
 int last_free_block_index;
@@ -85,7 +86,7 @@ void init(){
 
 	free_block_size = BLOCK_NO - ROOT_DIRECOTRY_NO - SUPER_BLOCK_NO - FAT_BLOCK_NO;
 	freeBlockTable = (int *)malloc(free_block_size * sizeof(int)); 
-	//first several block should be non-empty
+	///first several block should be non-empty
 	int i;
 
 	for(i=0;i<SUPER_BLOCK_NO+FAT_BLOCK_NO+ROOT_DIRECOTRY_NO;i++){
@@ -96,6 +97,7 @@ void init(){
 	directoryTable = NULL;
 	descriptorTable = NULL;
 	FATTable = NULL;
+	fat_node_no = 0;
 
 	SuperBlockData data;
 	data.no_fat_block = FAT_BLOCK_NO;
@@ -105,7 +107,7 @@ void init(){
 	data.block_no = BLOCK_NO;
 
 	char *buf = (char *)malloc(BLOCK_SIZE);
-	memcpy(buf,&data,sizeof(data));
+	//memcpy(buf,&data,sizeof(data));
 
 	write_blocks(0,1,buf);
 }
@@ -137,6 +139,7 @@ void sfs_ls(){
 int sfs_fopen(char *name){
 	int i,j;
 
+	printf("open name is %s \n", name);
 	for(i = 0;i<directory_no;i++){
 		DirectoryEntry entry = directoryTable[i];
 		printf("entry name: %s\n", entry.name);
@@ -189,6 +192,8 @@ int sfs_fwrite(int fileID, char *buf, int length){
 	int offset = w_pointer%BLOCK_SIZE;
 	int block_base = 0;
 
+	printf("31");
+	fflush(stdout);
 	char *w_buffer = (char *)malloc(no_block_to_write * BLOCK_SIZE); 
 
 	if(offset != 0 || w_pointer < getFileSize(fileID)){
@@ -199,6 +204,8 @@ int sfs_fwrite(int fileID, char *buf, int length){
 		memcpy(w_buffer,r_buf,offset);
 	}
 
+	printf("32");
+	fflush(stdout);
 	memcpy(w_buffer+offset,buf,length);
 
 	int *db_id_array = (int *)malloc(sizeof(int) * no_block_to_write);
@@ -206,8 +213,12 @@ int sfs_fwrite(int fileID, char *buf, int length){
 		db_id_array[i] = -1;
 	}
 
+	printf("33");
+	fflush(stdout);
 	int off=0;
 	if(offset != 0 || w_pointer < getFileSize(fileID)){//need to record first block
+		printf("34");
+		fflush(stdout);		
 		int db_id = getNthBlockDBIndex(fileID,w_pointer/BLOCK_SIZE);
 		db_id_array[0] = db_id;
 		off = 1;
@@ -241,6 +252,8 @@ int sfs_fwrite(int fileID, char *buf, int length){
 			}
 		}
 	}else{
+			printf("35");
+			fflush(stdout);		
 		int i;
 			for(i = 0; i < no_block_to_write-off; i++){
 				int f_id = getLastFreeBlockIndex();
@@ -253,7 +266,9 @@ int sfs_fwrite(int fileID, char *buf, int length){
 				off++;
 			}
 	}
-
+	
+	printf("36");
+	fflush(stdout);
 	//write to hard disk
 	int fail=0;
 	for(i = 0; i < directory_no; i++){
@@ -270,9 +285,14 @@ int sfs_fwrite(int fileID, char *buf, int length){
 	
 	//link fat node
 	//with head
+
+	printf("37");
+	fflush(stdout);
 	int root_id = getRootFatIndex(fileID);
 	FATEntry *f_entry = &FATTable[root_id];
 	if(f_entry -> DB_index != -1){
+		printf("38");
+		fflush(stdout);		
 		int isOverride=0;
 		while(f_entry -> next != -1){
 			if(f_entry->DB_index == db_id_array[0]){
@@ -304,14 +324,20 @@ int sfs_fwrite(int fileID, char *buf, int length){
 			}
 		}
 	}else{
+		printf("39");
+		fflush(stdout);		
+	
 		//update the root for directory table and descriptor table
 		FATEntry *entry = getLastFatEntry(fileID);
 		entry -> DB_index = db_id_array[0];
 
 		for(i=1;i<no_block_to_write;i++){
 			if(db_id_array[i] == -1) break;
-
+			printf("39.1");
+			fflush(stdout);
 			int fat_index = createNewFatEntry(db_id_array[i],-1);
+			printf("39.2");
+			fflush(stdout);
 			entry -> next = fat_index;
 			entry = &FATTable[fat_index];
 		}
@@ -321,6 +347,8 @@ int sfs_fwrite(int fileID, char *buf, int length){
 		return -1;
 	}
 
+	printf("40");
+	fflush(stdout);
 	return length;
 }
 
@@ -412,7 +440,7 @@ int sfs_remove(char *file){
 	char *buffer = (char *)malloc(BLOCK_SIZE);
 	for (i = 0; i < BLOCK_SIZE; i++)
 	{
-		buffer[i]=48;
+		buffer[i] = 0;
 	}
 
 	
@@ -462,8 +490,8 @@ int sfs_remove(char *file){
 
 
 int sfs_fcreate(char *name){
-	//printf("going to create!");
-
+	printf("going to create!");
+	fflush(stdout);
 	int free_block_index;
 	if( (free_block_index = getLastFreeBlockIndex()) < 0){	//no space to create new file
 		return 0;
@@ -476,26 +504,43 @@ int sfs_fcreate(char *name){
 	fat_entry.DB_index = -1;		//no block is allocated at first
 	fat_entry.next = -1;
 	
-	int top_fat_index = sizeof(FATTable)/sizeof(FATEntry);
-	FATTable = realloc(FATTable,sizeof(FATEntry));
-	FATTable[top_fat_index] = fat_entry;
+	printf("11\n");
+	fflush(stdout);
+	int top_fat_index = fat_node_no;
 
+	printf("fattable size is %d\n",sizeof(FATTable));
+
+	FATEntry *ftTable = (FATEntry *)malloc(sizeof(FATEntry) * (top_fat_index+1));
+	memcpy(ftTable,FATTable,sizeof(FATEntry) * (top_fat_index));
+	ftTable[top_fat_index] = fat_entry;
+	free(FATTable);
+	FATTable = ftTable;
+	fat_node_no++;
+
+	printf("12\n");
+	fflush(stdout);
 	//1. change file directory table
 		//1a find free block
 		//1b add new entry
 	DirectoryEntry new_fentry;
 
-	strncpy(new_fentry.name,name,strlen(name)); //plus 1 to include \0
+	strncpy(new_fentry.name,name,strlen(name)+1); //plus 1 to include \0
 	new_fentry.FAT_index = top_fat_index;			//index of fat table
 	new_fentry.attr.ID = last_id_index;
 	new_fentry.attr.size = 0;
 
 	int top_directory_index = directory_no;
-	directoryTable = realloc(directoryTable,sizeof(DirectoryEntry));
-	directoryTable[top_directory_index] = new_fentry;
+	
+	DirectoryEntry *direTable = (DirectoryEntry *)malloc(sizeof(DirectoryEntry) * (directory_no+1));
+	memcpy(direTable,directoryTable,sizeof(DirectoryEntry) * (directory_no));
+	direTable[top_directory_index] = new_fentry;
+	free(directoryTable);
+	directoryTable = direTable;
 
 	last_id_index++;
-
+	
+	printf("13\n");
+	fflush(stdout);
 	// //2. change free table
 	// freeBlockTable[free_block_index] = 1;
 	// last_free_block_index = free_block_index;
@@ -508,9 +553,15 @@ int sfs_fcreate(char *name){
 	new_dentry.fileID = new_fentry.attr.ID;
 
 	int top_descriptor_index = open_directory_no;
-	descriptorTable = realloc(descriptorTable,sizeof(DescriptorEntry));
-	descriptorTable[top_descriptor_index] = new_dentry;
+	
+	DescriptorEntry *tmpTable = (DescriptorEntry *)malloc(sizeof(DescriptorEntry) * (open_directory_no+1));
+	memcpy(tmpTable, descriptorTable, sizeof(DescriptorEntry) * (open_directory_no));
+	tmpTable[top_descriptor_index] = new_dentry;
+	free(descriptorTable);
+	descriptorTable = tmpTable;
 
+	printf("14\n");
+	fflush(stdout);
 	// then push free block and directory table to harddisk & fat table
 	// write_blocks(BLOCK_NO-1, FREE_BLOCK_NO, freeBlockTable);
 	// write_blocks(SUPER_BLOCK_NO, ROOT_DIRECOTRY_NO, directoryTable);
@@ -523,7 +574,9 @@ int sfs_fcreate(char *name){
 	//write info to hard disk
 	write_blocks(SUPER_BLOCK_NO, ROOT_DIRECOTRY_NO, directoryTable);
 	write_blocks(SUPER_BLOCK_NO+ROOT_DIRECOTRY_NO, FAT_BLOCK_NO, FATTable);
-
+	
+	printf("15\n");
+	fflush(stdout);
 	return 1;
 }
 
@@ -646,7 +699,7 @@ int getRootFatIndex(int fileID){
 }
 
 int fatIndexWithDBIndex(int db_id){
-	int ite = sizeof(FATTable)/sizeof(FATEntry);
+	int ite = fat_node_no;
 	int i;	
 	for(i = 0; i < ite; i++){
 		if(FATTable[i].DB_index == db_id){
@@ -670,9 +723,9 @@ FATEntry* getLastFatEntry(int fileID){
 }
 
 int createNewFatEntry(int DB_index,int next){
-	int no_fat = sizeof(FATTable)/sizeof(FATEntry);
-
-	for(int i=0;i<no_fat;i++){
+	int no_fat = fat_node_no;
+	int i;
+	for(i=0;i<no_fat;i++){
 		FATEntry *entry = &FATTable[i];
 		if(freeBlockTable[entry->DB_index] == 0 ){
 			entry -> DB_index = DB_index;
@@ -685,9 +738,14 @@ int createNewFatEntry(int DB_index,int next){
 	fat_entry.DB_index = DB_index;		//no block is allocated at first
 	fat_entry.next = next;
 	
-	int top_fat_index = sizeof(FATTable)/sizeof(FATEntry);
-	FATTable = realloc(FATTable,sizeof(FATEntry));
-	FATTable[top_fat_index] = fat_entry;
+	int top_fat_index = fat_node_no;
+
+	FATEntry *tmpTable = (FATEntry *)malloc(sizeof(FATEntry) * (top_fat_index + 1));
+	memcpy(tmpTable,FATTable,sizeof(FATEntry)*fat_node_no);	
+	tmpTable[top_fat_index] = fat_entry;
+	FATTable = tmpTable;	
+
+	fat_node_no++;
 
 	return top_fat_index;
 }

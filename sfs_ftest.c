@@ -78,7 +78,7 @@ main(int argc, char **argv)
     mksfs(1);                     /* Initialize the file system. */
 
     printf("1");
-    //rand_name();
+    rand_name();
     fflush(stdout);
    /* First we open two files and attempt to write data to them.
    */
@@ -86,7 +86,7 @@ main(int argc, char **argv)
         printf("i is %d\n",i);
        fflush(stdout);
 
-       names[i] = "abcd\0";//rand_name();
+       names[i] = rand_name();
        //printf("i is %d\n",i);
        fflush(stdout);
        fds[i] = sfs_fopen(names[i]);
@@ -97,6 +97,9 @@ main(int argc, char **argv)
            error_count++;
        }
        tmp = sfs_fopen(names[i]);
+
+	printf("open again");
+	fflush(stdout);
        if (tmp >= 0 && tmp != fds[i]) {
            fprintf(stderr, "ERROR: file %s was opened twice\n", names[i]);
            error_count++;
@@ -125,72 +128,78 @@ main(int argc, char **argv)
 
    printf("3");
    fflush(stdout);
-//
-//    for (i = 0; i < 2; i++) {
-//        for (j = 0; j < filesize[i]; j += chunksize) {
-//            if ((filesize[i] - j) < 10) {
-//                chunksize = filesize[i] - j;
-//            }
-//            else {
-//                chunksize = (rand() % (filesize[i] - j)) + 1;
-//            }
-//
-//            if ((buffer = malloc(chunksize)) == NULL) {
-//                fprintf(stderr, "ABORT: Out of memory!\n");
-//                exit(-1);
-//            }
-//            for (k = 0; k < chunksize; k++) {
-//                buffer[k] = (char) (j+k);
-//            }
-//            printf("file: %d, chunksize: %d\n", i, chunksize);
-//            sfs_ls();
-//            sfs_fwrite(fds[i], buffer, chunksize);
-//	    free(buffer);
-//        }
-//    }
-//
-//    sfs_fclose(fds[1]);
-//
-//    printf("File %s now has length %d and %s now has length %d:\n",
-//            names[0], filesize[0], names[1], filesize[1]);
-//    sfs_ls();
-//
-//    fds[1] = sfs_fopen(names[1]);
-//
-//    printf("before doing reads\n\n");
-//
-//    for (i = 0; i < 2; i++) {
-//        for (j = 0; j < filesize[i]; j += chunksize) {
-//            if ((filesize[i] - j) < 10) {
-//                chunksize = filesize[i] - j;
-//            }
-//            else {
-//                chunksize = (rand() % (filesize[i] - j)) + 1;
-//            }
-//            if ((buffer = malloc(chunksize)) == NULL) {
-//                fprintf(stderr, "ABORT: Out of memory!\n");
-//                exit(-1);
-//            }
-//            printf("before sfs_read\n\n");
-//            sfs_fread(fds[i], buffer, chunksize);
-//            printf("After sfs_read\n\n");
-//            /*
-//            for (k = 0; k < chunksize; k++) {
-//                if (buffer[k] != (char)(j+k)) {
-//                    fprintf(stderr, "ERROR: data error at offset %d in file %s (%d,%d)\n",
-//                            j+k, names[i], buffer[k], (char)(j+k));
-//                    error_count++;
-//                    break;
-//                }
-//            }
-//            */
-//            free(buffer);
-//            printf("After doing reads %d\n\n", i);
-//        }
-//    }
-//    printf("After doing reads\n\n");
-//
-//    for (i = 0; i < 2; i++) {
+
+
+
+    for (i = 0; i < 2; i++) {
+        for (j = 0; j < filesize[i]; j += chunksize) {
+            if ((filesize[i] - j) < 10) {
+                chunksize = filesize[i] - j;
+            }
+            else {
+                chunksize = (rand() % (filesize[i] - j)) + 1;
+            }
+
+            if ((buffer = malloc(chunksize)) == NULL) {
+                fprintf(stderr, "ABORT: Out of memory!\n");
+                exit(-1);
+            }
+            for (k = 0; k < chunksize; k++) {
+                buffer[k] = (char) (j+k);
+            }
+            printf("file: %d, chunksize: %d\n", i, chunksize);
+            sfs_ls();
+		  printf("4");
+   fflush(stdout);
+            sfs_fwrite(fds[i], buffer, chunksize);
+  printf("5");
+   fflush(stdout);
+	    free(buffer);
+        }
+    }
+
+    sfs_fclose(fds[1]);
+
+    printf("File %s now has length %d and %s now has length %d:\n",
+            names[0], filesize[0], names[1], filesize[1]);
+    sfs_ls();
+
+    fds[1] = sfs_fopen(names[1]);
+
+    printf("before doing reads\n\n");
+
+    for (i = 0; i < 2; i++) {
+        for (j = 0; j < filesize[i]; j += chunksize) {
+            if ((filesize[i] - j) < 10) {
+                chunksize = filesize[i] - j;
+            }
+            else {
+                chunksize = (rand() % (filesize[i] - j)) + 1;
+            }
+            if ((buffer = malloc(chunksize)) == NULL) {
+                fprintf(stderr, "ABORT: Out of memory!\n");
+                exit(-1);
+            }
+            printf("before sfs_read\n\n");
+            sfs_fread(fds[i], buffer, chunksize);
+            printf("After sfs_read\n\n");
+            /*
+            for (k = 0; k < chunksize; k++) {
+                if (buffer[k] != (char)(j+k)) {
+                    fprintf(stderr, "ERROR: data error at offset %d in file %s (%d,%d)\n",
+                            j+k, names[i], buffer[k], (char)(j+k));
+                    error_count++;
+                    break;
+                }
+            }
+            */
+            free(buffer);
+            printf("After doing reads %d\n\n", i);
+        }
+    }
+    printf("After doing reads\n\n");
+
+//   for (i = 0; i < 2; i++) {
 //        sfs_fclose(fds[i]);
 //        if (sfs_remove(names[i]) != 0) {
 //            fprintf(stderr, "ERROR: deleting file %s\n", names[i]);
