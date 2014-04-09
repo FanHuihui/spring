@@ -8,7 +8,7 @@
 #define BLOCK_SIZE 10
 #define BLOCK_NO 100
 #define ROOT_DIRECOTRY_NO 2
-#define SUPER_BLOCK_NO 2
+#define SUPER_BLOCK_NO 1
 #define FAT_BLOCK_NO 3
 #define FREE_BLOCK_NO 1
 
@@ -39,6 +39,15 @@ typedef struct
 	int next;
 }FATEntry;
 
+typedef struct 
+{
+	int no_root_block;
+	int no_fat_block;
+	int no_free_block;
+	int no_supper_block;
+	int block_no;
+}SuperBlockData;
+
 
 DirectoryEntry *directoryTable;
 DescriptorEntry *descriptorTable;
@@ -61,6 +70,13 @@ int writeDataToDisk(int fileID,char *buf, int length);
 int changeDirectoryRootFatIndex(int fileID, int rootIndex);
 int changeOpenFileRootFatIndex(int fileID, int rootIndex);
 int getReadPointer(int fileID);
+void removeEntryFromDescriptorTable(int fileID);
+void increaseWritePointer(int fileID,int length);
+void increaseReadPointer(int fileID,int length);
+int getFileSize(int fileID);
+int getNthBlockDBIndex(int fileID, int nth_fat_block);
+int createNewFatEntry(int DB_index,int next);
+FATEntry* getLastFatEntry(int fileID);
 
 void init(){
 	directory_no = 0;	//0 file at first
@@ -70,12 +86,28 @@ void init(){
 	free_block_size = BLOCK_NO - ROOT_DIRECOTRY_NO - SUPER_BLOCK_NO - FAT_BLOCK_NO;
 	freeBlockTable = (int *)malloc(free_block_size * sizeof(int)); 
 	//first several block should be non-empty
-	//????
-	//????
+	int i;
+
+	for(i=0;i<SUPER_BLOCK_NO+FAT_BLOCK_NO+ROOT_DIRECOTRY_NO;i++){
+		freeBlockTable[i] = 1;
+	}
+	freeBlockTable[BLOCK_NO-1] = 1;
 
 	directoryTable = NULL;
 	descriptorTable = NULL;
 	FATTable = NULL;
+
+	SuperBlockData data;
+	data.no_fat_block = FAT_BLOCK_NO;
+	data.no_supper_block = SUPER_BLOCK_NO;
+	data.no_free_block = FREE_BLOCK_NO;
+	data.no_root_block = ROOT_DIRECOTRY_NO;
+	data.block_no = BLOCK_NO;
+
+	char *buf = (char *)malloc(BLOCK_SIZE);
+	memcpy(buf,&data,sizeof(data));
+
+	write_blocks(0,1,buf);
 }
 
 int mksfs(int fresh){
@@ -118,18 +150,33 @@ int sfs_fopen(char *name){
 					return j;
 				}
 			}
+
+			//same name not found in open file, may be closed already
+			//append the new entry into last row
+
+			DescriptorEntry *tmpTable = (DescriptorEntry *)malloc(sizeof(open_directory_no+1));
+			memcpy(tmpTable,descriptorTable,open_directory_no * sizeof(DescriptorEntry));
+
+			DescriptorEntry e;
+			e.root_FAT = entry.FAT_index;
+			e.write_ptr = 0;
+			e.read_ptr = 0;
+
+			tmpTable[open_directory_no] = e;
+			descriptorTable = tmpTable; 
+			open_directory_no++;
+
+			return open_directory_no-1;
 		}
 	}
 
 	//if no such file
-	printf("%s not exist\n",name);
-	int returnIdex = last_id_index;
 	
 	if(!sfs_fcreate(name)){	//not create successfully
 		return 0;
 	};
 
-	return returnIdex;
+	return open_directory_no-1;
 }
 
 
@@ -257,7 +304,17 @@ int sfs_fwrite(int fileID, char *buf, int length){
 			}
 		}
 	}else{
+		//update the root for directory table and descriptor table
+		FATEntry *entry = getLastFatEntry(fileID);
+		entry -> DB_index = db_id_array[0];
 
+		for(i=1;i<no_block_to_write;i++){
+			if(db_id_array[i] == -1) break;
+
+			int fat_index = createNewFatEntry(db_id_array[i],-1);
+			entry -> next = fat_index;
+			entry = &FATTable[fat_index];
+		}
 	}
 
 	if(fail){
@@ -288,7 +345,34 @@ int sfs_fread(int fileID, char *buf, int length){
 
 	memcpy(buf,r_buf+offset,length);
 
+	increaseReadPointer(fileID,length);
+
 	return 1;
+}
+
+void increaseWritePointer(int fileID,int length){
+	int i,wp;
+	for(i = 0; i < open_directory_no; i++){
+		if(descriptorTable[i].fileID == fileID ){
+			descriptorTable[i].write_ptr += length;
+			wp = descriptorTable[i].write_ptr;
+		}
+	}
+
+	for(i = 0; i < directory_no;i++){
+		if(directoryTable[i].attr.ID == fileID && wp > directoryTable[i].attr.size){
+			directoryTable[i].attr.size = wp;
+		}
+	}
+}
+
+void increaseReadPointer(int fileID,int length){
+	int i;
+	for(i = 0; i < open_directory_no; i++){
+		if(descriptorTable[i].fileID == fileID ){
+			descriptorTable[i].read_ptr += length;
+		}
+	}
 }
 
 
@@ -306,13 +390,17 @@ int sfs_fseek(int fileID, int offset){
 	
 	return 1;
 }
+
 int sfs_fclose(int fileID){
+	int i,j;
+	int index;
+	//remove entry from open file directory
+	removeEntryFromDescriptorTable(fileID);
+
 	//flush memory to harddisk
 	write_blocks(BLOCK_NO-1, FREE_BLOCK_NO, freeBlockTable);
 	write_blocks(SUPER_BLOCK_NO, ROOT_DIRECOTRY_NO, directoryTable);
 	write_blocks(SUPER_BLOCK_NO+ROOT_DIRECOTRY_NO, FAT_BLOCK_NO, FATTable);
-
-	open_directory_no--;
 	
 	return 1;
 }
@@ -397,7 +485,7 @@ int sfs_fcreate(char *name){
 		//1b add new entry
 	DirectoryEntry new_fentry;
 
-	strncpy(new_fentry.name,name,strlen(name)+1); //plus 1 to include \0
+	strncpy(new_fentry.name,name,strlen(name)); //plus 1 to include \0
 	new_fentry.FAT_index = top_fat_index;			//index of fat table
 	new_fentry.attr.ID = last_id_index;
 	new_fentry.attr.size = 0;
@@ -442,10 +530,9 @@ int sfs_fcreate(char *name){
 
 int getLastFreeBlockIndex(){
 	int i;
-	for(i=0;i<free_block_size;i++){
-		int index = (last_free_block_index + i) % free_block_size;
-		if( freeBlockTable[index] == 0 ){
-			return index;
+	for(i=0;i<BLOCK_NO;i++){
+		if( freeBlockTable[i] == 0 ){
+			return i;
 		}
 	}
 
@@ -464,10 +551,11 @@ int getFileSize(int fileID){
 }
 
 int getNthBlockFatIndex(int fileID, int nth_block){
-	int root_index = getRootFatIndex(fileID);
+	int rootIndex = getRootFatIndex(fileID);
+	int i;
 
 	FATEntry entry = FATTable[rootIndex];
-	for( i = 0; i < nth_fat_block; i++){
+	for( i = 0; i < nth_block; i++){
 		if(entry.next < 0){
 			return -1;
 		}
@@ -482,7 +570,7 @@ int getNthBlockFatIndex(int fileID, int nth_block){
 int getNthBlockDBIndex(int fileID, int nth_fat_block){
 	int i;
 
-	int root_index = getRootFatIndex(fileID);
+	int rootIndex = getRootFatIndex(fileID);
 
 	FATEntry entry = FATTable[rootIndex];
 	for( i = 0; i < nth_fat_block; i++){
@@ -513,7 +601,7 @@ int getReadPointer(int fileID){
 	int i;
 
 	for(i=0;i<open_directory_no;i++){
-		DescriptorEntry *entry = descriptorTable[i];
+		DescriptorEntry entry = descriptorTable[i];
 		if(entry.fileID == fileID){
 			return entry.read_ptr;
 		}
@@ -559,7 +647,7 @@ int getRootFatIndex(int fileID){
 
 int fatIndexWithDBIndex(int db_id){
 	int ite = sizeof(FATTable)/sizeof(FATEntry);
-	
+	int i;	
 	for(i = 0; i < ite; i++){
 		if(FATTable[i].DB_index == db_id){
 			return i;
@@ -572,13 +660,13 @@ int fatIndexWithDBIndex(int db_id){
 FATEntry* getLastFatEntry(int fileID){
 	int root = getRootFatIndex(fileID);
 
-	FATEntry entry = FATTable[root];
+	FATEntry *entry = &FATTable[root];
 
-	while(entry.next != -1){
-		entry = FATTable[entry.next];
+	while(entry->next != -1){
+		entry = &FATTable[entry->next];
 	}
 
-	return &entry;
+	return entry;
 }
 
 int createNewFatEntry(int DB_index,int next){
@@ -602,5 +690,24 @@ int createNewFatEntry(int DB_index,int next){
 	FATTable[top_fat_index] = fat_entry;
 
 	return top_fat_index;
+}
+
+void removeEntryFromDescriptorTable(int fileID){
+	int index = -1;
+	int i,j;
+
+	for(i=0;i<open_directory_no;i++){
+		if(descriptorTable[i].fileID == fileID){
+			index = i;
+		}
+	}
+
+	if(index != -1){
+		DescriptorEntry *tmpTable = (DescriptorEntry *)malloc(sizeof(DescriptorEntry) * open_directory_no-1);
+		memcpy(tmpTable,descriptorTable,index * sizeof(DescriptorEntry));
+		memcpy(tmpTable + index * sizeof(DescriptorEntry), descriptorTable + (index+1) * sizeof(DescriptorEntry), (open_directory_no-index-1)*sizeof(DescriptorEntry));
+		descriptorTable = tmpTable;
+		open_directory_no--;
+	}
 }
 
